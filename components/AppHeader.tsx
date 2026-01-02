@@ -4,7 +4,7 @@ export default function AppHeader() {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.appName}>SUGGI THOTA</Text>
+        <Text style={styles.appName}>VITURA</Text>
       </View>
     </View>
   );
@@ -13,7 +13,6 @@ export default function AppHeader() {
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#fff',
-    paddingHorizontal: 16,
   },
   content: {
     alignItems: 'flex-start',

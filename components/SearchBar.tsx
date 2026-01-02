@@ -40,8 +40,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.02)',
+    borderWidth: 0.5,
+    borderColor: '#E0E0E0',
   },
   placeholderText: {
     marginLeft: 12,

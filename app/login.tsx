@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import Header from '../components/Header';
@@ -6,8 +7,11 @@ import LoginForm from '../components/LoginForm';
 export default function LoginScreen() {
   const router = useRouter();
 
-  const handleLoginSuccess = () => {
-    router.back();
+  const handleLoginSuccess = async () => {
+    // Mark onboarding as completed
+    await AsyncStorage.setItem('onboarding_completed', 'true');
+    // Redirect to home page
+    router.replace('/(tabs)/home');
   };
 
   return (

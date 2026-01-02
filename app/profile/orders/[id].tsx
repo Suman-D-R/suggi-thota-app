@@ -206,9 +206,11 @@ export default function OrderDetailsScreen() {
               const product = getProductById(item.productId);
               if (!product) return null;
 
-              const discountedPrice = item.discount
-                ? item.price - (item.price * item.discount) / 100
-                : item.price;
+              const sellingPrice = typeof item.price === 'number' && !isNaN(item.price) ? item.price : 0;
+              const discount = typeof item.discount === 'number' && !isNaN(item.discount) ? item.discount : 0;
+              const discountedPrice = discount > 0 && sellingPrice > 0
+                ? sellingPrice - (sellingPrice * discount) / 100
+                : sellingPrice;
               const itemTotal = discountedPrice * item.quantity;
 
               return (

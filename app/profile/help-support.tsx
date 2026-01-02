@@ -60,7 +60,7 @@ export default function HelpSupportScreen() {
   };
 
   const handleEmailSupport = () => {
-    Linking.openURL('mailto:support@suggithota.com');
+    Linking.openURL('mailto:support@vitura.com');
   };
 
   const handleWhatsAppSupport = () => {
@@ -115,7 +115,7 @@ export default function HelpSupportScreen() {
               </View>
               <View style={styles.contactInfo}>
                 <Text style={styles.contactLabel}>Email Us</Text>
-                <Text style={styles.contactValue}>support@suggithota.com</Text>
+                <Text style={styles.contactValue}>support@vitura.com</Text>
               </View>
               <Ionicons name='chevron-forward' size={20} color='#999' />
             </TouchableOpacity>

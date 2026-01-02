@@ -87,7 +87,11 @@ export default function LocationHeader() {
             <Text style={styles.selectedLabel}>
               {selectedAddress?.label || 'Home'}
             </Text>
-            <Text style={styles.selectedAddress} numberOfLines={1}>
+            <Text
+              style={styles.selectedAddress}
+              numberOfLines={1}
+              ellipsizeMode='tail'
+            >
               {selectedAddress?.address || 'Select an address'}
             </Text>
             <Ionicons name='chevron-down' size={14} color='#1a1a1a' />
@@ -103,10 +107,7 @@ export default function LocationHeader() {
       >
         <View style={styles.modalContainer}>
           <Animated.View
-            style={[
-              styles.backdrop,
-              { opacity: backdropOpacity },
-            ]}
+            style={[styles.backdrop, { opacity: backdropOpacity }]}
           >
             <TouchableOpacity
               style={styles.backdropTouch}
@@ -125,10 +126,13 @@ export default function LocationHeader() {
             ]}
           >
             <View style={styles.drawerHandle} />
-            
+
             <View style={styles.drawerHeader}>
               <Text style={styles.drawerTitle}>Choose Delivery Location</Text>
-              <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+              <TouchableOpacity
+                onPress={handleClose}
+                style={styles.closeButton}
+              >
                 <Ionicons name='close' size={20} color='#666' />
               </TouchableOpacity>
             </View>
@@ -148,10 +152,12 @@ export default function LocationHeader() {
                   onPress={() => handleAddressSelect(address.id)}
                   activeOpacity={0.7}
                 >
-                  <View style={[
-                    styles.addressIcon,
-                    selectedAddress?.id === address.id && styles.selectedIcon
-                  ]}>
+                  <View
+                    style={[
+                      styles.addressIcon,
+                      selectedAddress?.id === address.id && styles.selectedIcon,
+                    ]}
+                  >
                     <Ionicons
                       name={
                         address.label === 'Home'
@@ -161,16 +167,21 @@ export default function LocationHeader() {
                           : 'location'
                       }
                       size={20}
-                      color={selectedAddress?.id === address.id ? '#16a34a' : '#666'}
+                      color={
+                        selectedAddress?.id === address.id ? '#16a34a' : '#666'
+                      }
                     />
                   </View>
-                  
+
                   <View style={styles.addressContent}>
                     <View style={styles.labelRow}>
-                      <Text style={[
-                        styles.addressLabel,
-                        selectedAddress?.id === address.id && styles.selectedText
-                      ]}>
+                      <Text
+                        style={[
+                          styles.addressLabel,
+                          selectedAddress?.id === address.id &&
+                            styles.selectedText,
+                        ]}
+                      >
                         {address.label}
                       </Text>
                       {selectedAddress?.id === address.id && (
@@ -204,9 +215,7 @@ export default function LocationHeader() {
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#fff',
+    paddingVertical: 4,
   },
   headerButton: {
     flexDirection: 'row',
@@ -218,18 +227,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    justifyContent: 'flex-start',
+  },
+  addressTextWrapper: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   selectedLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     color: '#1a1a1a',
   },
   selectedAddress: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
-    flex: 1,
+    flexShrink: 1,
   },
-  
   modalContainer: {
     flex: 1,
     justifyContent: 'flex-end',

@@ -1,3 +1,4 @@
+import { IconUser } from '@tabler/icons-react-native';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -9,7 +10,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import AppHeader from '../../components/AppHeader';
 import CartFAB from '../../components/CartFAB';
 import Header from '../../components/Header';
 import HeroCarousel from '../../components/HeroCarousel';
@@ -17,12 +17,15 @@ import LocationHeader from '../../components/LocationHeader';
 import ProductCard from '../../components/ProductCard';
 import SearchBar from '../../components/SearchBar';
 import { categoryAPI, productAPI } from '../../lib/api';
+import { useCartStore } from '../../store/cartStore';
 
 interface Product {
   _id: string;
   name: string;
-  price: number;
+  originalPrice: number;
+  sellingPrice: number;
   unit: string;
+  size: number;
   category?: { _id: string; name: string };
   images?: string[];
   discount?: number;
@@ -43,9 +46,13 @@ export default function HomeTab() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const loadCart = useCartStore((state) => state.loadCart);
 
   useEffect(() => {
     loadData();
+    // Load cart when home page loads
+    loadCart();
   }, []);
 
   const loadData = async () => {
@@ -88,7 +95,6 @@ export default function HomeTab() {
     return (
       <View style={styles.container}>
         <Header />
-        <AppHeader />
         <LocationHeader />
         <View style={[styles.container, styles.centerContent]}>
           <ActivityIndicator size='large' color='#16a34a' />
@@ -102,7 +108,6 @@ export default function HomeTab() {
     return (
       <View style={styles.container}>
         <Header />
-        <AppHeader />
         <LocationHeader />
         <View style={[styles.container, styles.centerContent]}>
           <Text style={styles.errorText}>{error}</Text>
@@ -116,16 +121,40 @@ export default function HomeTab() {
 
   return (
     <View style={styles.container}>
-      <Header />
-      <AppHeader />
-      <LocationHeader />
-      <View style={styles.stickySearchContainer}>
+      <Header backgroundColor='#FBFBFB' />
+      <View style={styles.headerContainer}>
+        <View style={styles.headerContent}>
+          <Text style={styles.appName}>Vitura</Text>
+          <LocationHeader />
+        </View>
+        <TouchableOpacity
+          style={styles.userIconContainer}
+          onPress={() => router.push('/account')}
+          activeOpacity={0.7}
+        >
+          <IconUser strokeWidth={1.8} size={24} color='#568627' />
+        </TouchableOpacity>
+      </View>
+      <View
+        style={[
+          styles.stickySearchContainer,
+          isScrolled && {
+            borderBottomWidth: 0.5,
+            borderBottomColor: '#00000050',
+          },
+        ]}
+      >
         <SearchBar />
       </View>
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        onScroll={(event) => {
+          const scrollY = event.nativeEvent.contentOffset.y;
+          setIsScrolled(scrollY > 20);
+        }}
+        scrollEventThrottle={16}
       >
         <HeroCarousel />
         <View style={styles.section}>
@@ -150,8 +179,28 @@ export default function HomeTab() {
                       resizeMode='cover'
                     />
                   ) : (
-                    <View style={[styles.categoryPlaceholder, { backgroundColor: category._id === 'vegetables' ? '#E8F5E9' : '#FFF3E0' }]}>
-                      <Text style={[styles.categoryPlaceholderText, { color: category._id === 'vegetables' ? '#2E7D32' : '#EF6C00' }]}>
+                    <View
+                      style={[
+                        styles.categoryPlaceholder,
+                        {
+                          backgroundColor:
+                            category._id === 'vegetables'
+                              ? '#E8F5E9'
+                              : '#FFF3E0',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryPlaceholderText,
+                          {
+                            color:
+                              category._id === 'vegetables'
+                                ? '#2E7D32'
+                                : '#EF6C00',
+                          },
+                        ]}
+                      >
                         {category.name.charAt(0)}
                       </Text>
                     </View>
@@ -180,7 +229,7 @@ export default function HomeTab() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FBFBFB',
   },
   centerContent: {
     justifyContent: 'center',
@@ -190,6 +239,11 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#666',
+  },
+  appName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: 'green',
   },
   errorText: {
     fontSize: 16,
@@ -203,7 +257,6 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   stickySearchContainer: {
-    backgroundColor: '#fff',
     paddingTop: 8,
     paddingBottom: 16,
   },
@@ -217,11 +270,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     color: '#333',
     marginBottom: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
   },
   categoriesScrollContent: {
     paddingHorizontal: 16,
@@ -270,7 +323,28 @@ const styles = StyleSheet.create({
   productGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    paddingHorizontal: 10,
+    gap: 12,
+    justifyContent: 'flex-start',
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
     gap: 12,
+  },
+  headerContent: {
+    flex: 1,
+  },
+  userIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#56862750',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

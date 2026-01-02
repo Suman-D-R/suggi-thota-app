@@ -36,11 +36,24 @@ import { useCartStore } from '../../store/cartStore';
 const { width, height } = Dimensions.get('window');
 const IMG_HEIGHT = height * 0.45;
 
+interface ProductVariant {
+  size: number;
+  unit: string;
+  originalPrice?: number;
+  sellingPrice?: number;
+  discount?: number;
+  stock?: number;
+  isOutOfStock?: boolean;
+}
+
 interface Product {
   _id: string;
   name: string;
-  price: number;
+  originalPrice: number;
+  sellingPrice: number;
   unit: string;
+  size: number;
+  variants?: ProductVariant[];
   category?: { _id: string; name: string };
   images?: string[];
   discount?: number;
@@ -57,6 +70,7 @@ export default function ProductDetailsScreen() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const { addItem, updateQuantity, getItemQuantity } = useCartStore();
 
   const scrollY = useSharedValue(0);
@@ -75,7 +89,14 @@ export default function ProductDetailsScreen() {
       const response = await productAPI.getById(id);
 
       if (response.success && response.data?.product) {
-        setProduct(response.data.product);
+        const productData = response.data.product;
+        setProduct(productData);
+        // Set default variant
+        if (productData.variants && productData.variants.length > 0) {
+          setSelectedVariant(productData.variants[0]);
+        } else {
+          setSelectedVariant({ size: productData.size, unit: productData.unit });
+        }
       } else {
         setError('Product not found');
       }
@@ -87,7 +108,35 @@ export default function ProductDetailsScreen() {
     }
   };
 
-  const quantity = product ? getItemQuantity(product._id) : 0;
+  const quantity = product && selectedVariant 
+    ? getItemQuantity(product._id, selectedVariant) 
+    : 0;
+  
+  // Get available variants or use default size/unit
+  const availableVariants = product?.variants && product.variants.length > 0 
+    ? product.variants 
+    : product 
+      ? [{ size: product.size, unit: product.unit }]
+      : [];
+
+  // Get pricing for selected variant or fallback to product-level pricing
+  const getVariantPrice = (variant: ProductVariant | null) => {
+    if (variant && variant.sellingPrice !== undefined && variant.sellingPrice > 0) {
+      return {
+        sellingPrice: variant.sellingPrice,
+        originalPrice: variant.originalPrice || 0,
+        discount: variant.discount || 0,
+      };
+    }
+    // Fallback to product-level pricing
+    return {
+      sellingPrice: typeof product?.sellingPrice === 'number' && !isNaN(product.sellingPrice) ? product.sellingPrice : 0,
+      originalPrice: typeof product?.originalPrice === 'number' && !isNaN(product.originalPrice) ? product.originalPrice : 0,
+      discount: typeof product?.discount === 'number' && !isNaN(product.discount) ? product.discount : 0,
+    };
+  };
+
+  const selectedVariantPricing = getVariantPrice(selectedVariant);
 
   const scrollHandler = useAnimatedScrollHandler((event) => {
     scrollY.value = event.contentOffset.y;
@@ -147,28 +196,32 @@ export default function ProductDetailsScreen() {
     );
   }
 
-  const discountedPrice = product.discount
-    ? product.price - (product.price * product.discount) / 100
-    : product.price;
+  // Use variant-specific pricing if available, otherwise fallback to product-level pricing
+  const originalPrice = selectedVariantPricing.originalPrice;
+  const sellingPrice = selectedVariantPricing.sellingPrice;
+  const discount = selectedVariantPricing.discount;
 
   const handleIncreaseQuantity = () => {
+    if (!product || !selectedVariant) return;
     if (quantity === 0) {
-      addItem(product);
+      addItem(product, selectedVariant);
     } else {
-      updateQuantity(product._id, quantity + 1);
+      updateQuantity(product._id, quantity + 1, selectedVariant);
     }
   };
 
   const handleDecreaseQuantity = () => {
+    if (!product || !selectedVariant) return;
     if (quantity > 1) {
-      updateQuantity(product._id, quantity - 1);
+      updateQuantity(product._id, quantity - 1, selectedVariant);
     } else {
-      updateQuantity(product._id, 0);
+      updateQuantity(product._id, 0, selectedVariant);
     }
   };
 
   const handleAddToCart = () => {
-    addItem(product);
+    if (!product || !selectedVariant) return;
+    addItem(product, selectedVariant);
   };
 
   return (
@@ -229,23 +282,70 @@ export default function ProductDetailsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.category}>{product.category?.name || 'Fresh'}</Text>
                 <Text style={styles.name}>{product.name}</Text>
-                <Text style={styles.unit}>{product.unit}</Text>
+                {selectedVariant && (
+                  <Text style={styles.unit}>
+                    {selectedVariant.size} {selectedVariant.unit}
+                  </Text>
+                )}
               </View>
               <View style={styles.priceBlock}>
-                <Text style={styles.price}>₹{discountedPrice.toFixed(0)}</Text>
-                {product.discount && (
-                  <Text style={styles.originalPrice}>₹{product.price.toFixed(0)}</Text>
+                <Text style={styles.price}>₹{sellingPrice.toFixed(0)}</Text>
+                {discount > 0 && originalPrice > 0 && (
+                  <Text style={styles.originalPrice}>₹{originalPrice.toFixed(0)}</Text>
                 )}
               </View>
             </View>
 
-            {product.discount && (
+            {discount > 0 && (
               <View style={styles.discountTag}>
-                <Text style={styles.discountText}>{product.discount}% OFF</Text>
+                <Text style={styles.discountText}>{discount}% OFF</Text>
               </View>
             )}
 
             <View style={styles.divider} />
+
+            {availableVariants.length > 1 && (
+              <>
+                <Text style={styles.sectionTitle}>Select Size</Text>
+                <View style={styles.variantContainer}>
+                  {availableVariants.map((variant, index) => {
+                    const variantPricing = getVariantPrice(variant);
+                    const isSelected = selectedVariant?.size === variant.size &&
+                      selectedVariant?.unit === variant.unit;
+                    return (
+                      <TouchableOpacity
+                        key={index}
+                        style={[
+                          styles.variantButton,
+                          isSelected && styles.variantButtonSelected,
+                        ]}
+                        onPress={() => setSelectedVariant(variant)}
+                      >
+                        <Text
+                          style={[
+                            styles.variantText,
+                            isSelected && styles.variantTextSelected,
+                          ]}
+                        >
+                          {variant.size} {variant.unit}
+                        </Text>
+                        {variantPricing.sellingPrice > 0 && (
+                          <Text
+                            style={[
+                              styles.variantPrice,
+                              isSelected && styles.variantPriceSelected,
+                            ]}
+                          >
+                            ₹{Math.round(variantPricing.sellingPrice)}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <View style={styles.divider} />
+              </>
+            )}
 
             <Text style={styles.sectionTitle}>Description</Text>
             <Text style={styles.description}>
@@ -279,7 +379,7 @@ export default function ProductDetailsScreen() {
         <View style={styles.bottomBarContent}>
           <View style={styles.totalContainer}>
             <Text style={styles.totalLabel}>Total Price</Text>
-            <Text style={styles.totalPrice}>₹{(discountedPrice * (quantity || 1)).toFixed(0)}</Text>
+            <Text style={styles.totalPrice}>₹{(sellingPrice * (quantity || 1)).toFixed(0)}</Text>
           </View>
           
           {quantity > 0 ? (
@@ -572,5 +672,41 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  variantContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 8,
+  },
+  variantButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#fff',
+  },
+  variantButtonSelected: {
+    borderColor: '#16a34a',
+    backgroundColor: '#E8F5E9',
+  },
+  variantText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#666',
+  },
+  variantTextSelected: {
+    color: '#16a34a',
+    fontWeight: '700',
+  },
+  variantPrice: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 4,
+  },
+  variantPriceSelected: {
+    color: '#16a34a',
   },
 });

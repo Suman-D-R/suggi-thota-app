@@ -17,12 +17,12 @@ export default function Index() {
     try {
       // Initialize user store (load tokens and profile from storage)
       await initialize();
-      
+
       // Check onboarding status
       const onboardingCompleted = await AsyncStorage.getItem(
         'onboarding_completed'
       );
-      // setHasSeenOnboarding(onboardingCompleted === 'true');
+      setHasSeenOnboarding(false);
     } catch (error) {
       console.error('Error initializing app:', error);
       setHasSeenOnboarding(false);

@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "suggi-thota",
-    "slug": "suggi-thota",
+    "name": "vitura",
+    "slug": "vitura",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "suggithota",
+    "scheme": "vitura",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -14,7 +14,7 @@
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to help you add and find addresses.",
         "NSLocationAlwaysUsageDescription": "This app needs access to your location to help you add and find addresses."
       },
-      "bundleIdentifier": "com.sumandr.suggithota"
+      "bundleIdentifier": "com.sumandr.vitura"
     },
     "android": {
       "adaptiveIcon": {
@@ -36,7 +36,7 @@
           "apiKey": "YOUR_GOOGLE_MAPS_API_KEY"
         }
       },
-      "package": "com.sumandr.suggithota"
+      "package": "com.sumandr.vitura"
     },
     "web": {
       "output": "static",

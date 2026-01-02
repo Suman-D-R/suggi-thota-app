@@ -32,7 +32,9 @@ export default function LoginForm({
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
   const [name, setName] = useState('');
-  const [step, setStep] = useState<'initial' | 'phone' | 'otp' | 'name'>('initial');
+  const [step, setStep] = useState<'initial' | 'phone' | 'otp' | 'name'>(
+    'initial'
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
@@ -159,11 +161,11 @@ export default function LoginForm({
     } catch (error: any) {
       console.error('Send OTP error:', error);
       let errorMessage = 'Failed to send OTP. Please try again.';
-      
+
       if (error.message) {
         errorMessage = error.message;
       }
-      
+
       Alert.alert('Error', errorMessage);
     } finally {
       setIsLoading(false);
@@ -187,7 +189,7 @@ export default function LoginForm({
       }
     } catch (error: any) {
       console.error('Verify OTP error:', error);
-      
+
       // Check if name is required
       if (error.message === 'NAME_REQUIRED') {
         // Move to name collection step
@@ -195,13 +197,13 @@ export default function LoginForm({
         setIsLoading(false);
         return;
       }
-      
+
       let errorMessage = 'Invalid OTP. Please try again.';
-      
+
       if (error.message) {
         errorMessage = error.message;
       }
-      
+
       Alert.alert('Error', errorMessage);
       setOtp('');
     } finally {
@@ -226,11 +228,11 @@ export default function LoginForm({
     } catch (error: any) {
       console.error('Submit name error:', error);
       let errorMessage = 'Failed to complete registration. Please try again.';
-      
+
       if (error.message) {
         errorMessage = error.message;
       }
-      
+
       Alert.alert('Error', errorMessage);
     } finally {
       setIsLoading(false);
@@ -251,11 +253,11 @@ export default function LoginForm({
     } catch (error: any) {
       console.error('Resend OTP error:', error);
       let errorMessage = 'Failed to resend OTP. Please try again.';
-      
+
       if (error.message) {
         errorMessage = error.message;
       }
-      
+
       Alert.alert('Error', errorMessage);
     } finally {
       setIsLoading(false);
@@ -317,7 +319,7 @@ export default function LoginForm({
             <View style={styles.iconContainer}>
               <Ionicons name='storefront' size={80} color='#4CAF50' />
             </View>
-            <Text style={styles.appName}>Suggi Thota</Text>
+            <Text style={styles.appName}>Vitura</Text>
             <Text style={styles.appTagline}>
               Fresh Groceries Delivered to Your Doorstep
             </Text>
@@ -611,15 +613,18 @@ const styles = StyleSheet.create({
   },
   form: {
     width: '100%',
+    maxWidth: 360,
+    alignSelf: 'center',
   },
   inputContainer: {
-    marginBottom: 20,
+    marginBottom: 10,
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 8,
+    marginBottom: 4,
+    marginLeft: 8,
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -628,7 +633,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e0e0e0',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
   inputIcon: {
     marginRight: 12,
@@ -637,7 +642,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#333',
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
   countryCode: {
     paddingRight: 12,
@@ -704,7 +709,7 @@ const styles = StyleSheet.create({
   loginButton: {
     backgroundColor: '#4CAF50',
     borderRadius: 12,
-    paddingVertical: 16,
+    paddingVertical: 12,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
@@ -739,7 +744,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#fff',
     borderRadius: 12,
-    paddingVertical: 16,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: '#e0e0e0',
     gap: 8,

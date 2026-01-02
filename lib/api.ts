@@ -208,3 +208,105 @@ export const userAPI = {
     return data;
   },
 };
+
+// Cart API
+export const cartAPI = {
+  getCart: async () => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/cart`, {
+      headers,
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+
+  addItem: async (productId: string, size: number, unit: string, quantity: number = 1, price: number) => {
+    const headers = await getAuthHeaders();
+    const body = { productId, size, unit, quantity, price };
+    
+    // Debug logging
+    console.log('Cart API - addItem:', { productId, size, unit, quantity, price });
+    
+    const response = await fetch(`${API_BASE_URL}/cart/items`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      console.error('Cart API - addItem error:', data);
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+
+  updateItem: async (productId: string, size: number, unit: string, quantity: number) => {
+    const headers = await getAuthHeaders();
+    const body = { productId, size, unit, quantity };
+    
+    // Debug logging
+    console.log('Cart API - updateItem:', { productId, size, unit, quantity });
+    console.log('Cart API - updateItem body:', body);
+    
+    const response = await fetch(`${API_BASE_URL}/cart/items`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(body),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      console.error('Cart API - updateItem error:', data);
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+
+  removeItem: async (productId: string, size?: number, unit?: string) => {
+    const headers = await getAuthHeaders();
+    const body: any = { productId };
+    if (size !== undefined) body.size = size;
+    if (unit !== undefined) body.unit = unit;
+    
+    const response = await fetch(`${API_BASE_URL}/cart/items`, {
+      method: 'DELETE',
+      headers,
+      body: JSON.stringify(body),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+
+  clearCart: async () => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/cart`, {
+      method: 'DELETE',
+      headers,
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+};

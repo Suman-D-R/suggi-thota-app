@@ -4,8 +4,8 @@
 const getApiUrl = () => {
   // For development, use the local machine IP
   // For production, this would be your deployed API URL
-  // const localIP = '192.168.70.123';
-  const localIP = '192.168.1.225';
+  const localIP = '192.168.70.93';
+  // const localIP = '192.168.1.225';
   const port = '3000';
 
   return `http://${localIP}:${port}/api`;

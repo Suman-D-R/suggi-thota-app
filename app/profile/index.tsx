@@ -1,11 +1,17 @@
-import { Ionicons } from '@expo/vector-icons';
+import {
+  IconEdit,
+  IconMail,
+  IconPhone,
+  IconUser,
+  IconUserCircle,
+} from '@tabler/icons-react-native';
 import { useRouter } from 'expo-router';
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import Header from '../../components/Header';
 import { useUserStore } from '../../store/userStore';
@@ -21,9 +27,9 @@ export default function ProfileScreen() {
   if (!profile) {
     return (
       <View style={styles.container}>
-        <Header showBack={true} />
+        <Header showBack={true} title='My Profile' backgroundColor='#FBFBFB' />
         <View style={styles.emptyContainer}>
-          <Ionicons name='person-outline' size={64} color='#ccc' />
+          <IconUserCircle size={64} strokeWidth={1} color='#ccc' />
           <Text style={styles.emptyText}>No profile found</Text>
         </View>
       </View>
@@ -32,75 +38,81 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <Header showBack={true} />
+      <Header showBack={true} title='My Profile' backgroundColor='#FBFBFB' />
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <View style={styles.profileSection}>
-          <View style={styles.avatar}>
-            <Ionicons name='person' size={48} color='#4CAF50' />
-          </View>
-          <Text style={styles.name}>
-            {profile.firstName} {profile.lastName}
-          </Text>
-          <Text style={styles.email}>{profile.email}</Text>
-        </View>
-
-        <View style={styles.infoCard}>
+        <View style={styles.infoSection}>
           <View style={styles.infoRow}>
-            <View style={styles.infoLabelContainer}>
-              <Ionicons name='person-outline' size={20} color='#4CAF50' />
+            <View style={styles.iconContainer}>
+              <IconUser size={20} strokeWidth={1.5} color='#00000070' />
+            </View>
+            <View style={styles.infoContent}>
               <Text style={styles.label}>First Name</Text>
+              <Text style={styles.value}>{profile.firstName}</Text>
             </View>
-            <Text style={styles.value}>{profile.firstName}</Text>
           </View>
 
-          <View style={styles.divider} />
-
           <View style={styles.infoRow}>
-            <View style={styles.infoLabelContainer}>
-              <Ionicons name='person-outline' size={20} color='#4CAF50' />
+            <View style={styles.iconContainer}>
+              <IconUser size={20} strokeWidth={1.5} color='#00000070' />
+            </View>
+            <View style={styles.infoContent}>
               <Text style={styles.label}>Last Name</Text>
+              <Text style={styles.value}>{profile.lastName}</Text>
             </View>
-            <Text style={styles.value}>{profile.lastName}</Text>
           </View>
 
-          <View style={styles.divider} />
-
           <View style={styles.infoRow}>
-            <View style={styles.infoLabelContainer}>
-              <Ionicons name='mail-outline' size={20} color='#4CAF50' />
+            <View style={styles.iconContainer}>
+              <IconMail size={20} strokeWidth={1.5} color='#00000070' />
+            </View>
+            <View style={styles.infoContent}>
               <Text style={styles.label}>Email</Text>
+              <Text style={styles.value}>{profile.email}</Text>
             </View>
-            <Text style={styles.value}>{profile.email}</Text>
           </View>
 
-          <View style={styles.divider} />
-
           <View style={styles.infoRow}>
-            <View style={styles.infoLabelContainer}>
-              <Ionicons name='call-outline' size={20} color='#4CAF50' />
-              <Text style={styles.label}>Mobile Number</Text>
+            <View style={styles.iconContainer}>
+              <IconPhone size={20} strokeWidth={1.5} color='#00000070' />
             </View>
-            <Text style={styles.value}>{profile.mobileNumber}</Text>
+            <View style={styles.infoContent}>
+              <Text style={styles.label}>Mobile Number</Text>
+              <Text style={styles.value}>{profile.mobileNumber}</Text>
+            </View>
           </View>
         </View>
 
-        <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
-          <Ionicons name='create-outline' size={20} color='#fff' />
-          <Text style={styles.editButtonText}>Edit Profile</Text>
-        </TouchableOpacity>
+        <View style={styles.infoSection}>
+          <TouchableOpacity style={styles.menuCard} onPress={handleEdit}>
+            <View style={styles.iconContainer}>
+              <IconEdit size={20} strokeWidth={1.5} color='#00000070' />
+            </View>
+            <Text style={styles.menuText}>Edit Profile</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </View>
   );
 }
 
+const shadow = {
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.05,
+  shadowRadius: 8,
+  elevation: 3,
+  borderWidth: 0.2,
+  borderColor: '#E0E0E0',
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FBFBFB',
   },
   scrollView: {
     flex: 1,
@@ -108,83 +120,56 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 16,
   },
-  profileSection: {
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    paddingVertical: 32,
-    marginBottom: 20,
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#E8F5E9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  name: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
-  },
-  email: {
-    fontSize: 14,
-    color: '#666',
-  },
-  infoCard: {
-    backgroundColor: '#fff',
+
+  infoSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
     marginHorizontal: 16,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    marginBottom: 20,
+    marginTop: 16,
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    backgroundColor: '#fff',
+    ...shadow,
   },
   infoRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingHorizontal: 8,
   },
-  infoLabelContainer: {
-    flexDirection: 'row',
+  iconContainer: {
+    width: 30,
+    height: 30,
+    borderRadius: 20,
+    justifyContent: 'center',
     alignItems: 'center',
+  },
+  infoContent: {
     flex: 1,
+    marginLeft: 8,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginLeft: 12,
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 2,
   },
   value: {
-    fontSize: 16,
-    color: '#666',
-    flex: 1,
-    textAlign: 'right',
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#f0f0f0',
-    marginVertical: 4,
-  },
-  editButton: {
+  menuCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#4CAF50',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    marginHorizontal: 16,
+    paddingHorizontal: 8,
   },
-  editButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
+  menuText: {
+    fontSize: 14,
+    color: '#333',
+    flex: 1,
   },
   emptyContainer: {
     flex: 1,

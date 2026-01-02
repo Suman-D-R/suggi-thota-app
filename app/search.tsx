@@ -1,15 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
+import { IconArrowLeft } from '@tabler/icons-react-native';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-    Animated,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Animated,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductCard from '../components/ProductCard';
@@ -44,7 +45,7 @@ export default function SearchScreen() {
   const popularSuggestions = products.slice(0, 8);
 
   // Map dummy data to compatible format
-  const compatibleProducts = products.map(p => ({
+  const compatibleProducts = products.map((p) => ({
     ...p,
     _id: p.id,
     category: { _id: p.category, name: p.category },
@@ -206,14 +207,14 @@ export default function SearchScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.headerContainer}>
-        <TouchableOpacity 
-          onPress={() => router.back()} 
+        <TouchableOpacity
+          onPress={() => router.back()}
           style={styles.backButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={24} color="#333" />
+          <IconArrowLeft size={24} strokeWidth={1.5} color='#333' />
         </TouchableOpacity>
-        
+
         <View style={styles.searchBar}>
           <Ionicons
             name='search'
@@ -330,7 +331,7 @@ export default function SearchScreen() {
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps='handled'
       >
         {!hasSearched ? (
           <View style={styles.suggestionsContainer}>
@@ -343,7 +344,7 @@ export default function SearchScreen() {
                   onPress={() => handleSuggestionClick(product.name)}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="trending-up" size={14} color="#666" />
+                  <Ionicons name='trending-up' size={14} color='#666' />
                   <Text style={styles.suggestionText}>{product.name}</Text>
                 </TouchableOpacity>
               ))}
@@ -409,7 +410,10 @@ export default function SearchScreen() {
           >
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Sort By</Text>
-              <TouchableOpacity onPress={closeSortModal} style={styles.closeButton}>
+              <TouchableOpacity
+                onPress={closeSortModal}
+                style={styles.closeButton}
+              >
                 <Ionicons name='close' size={20} color='#666' />
               </TouchableOpacity>
             </View>
@@ -426,22 +430,24 @@ export default function SearchScreen() {
                   <Text
                     style={[
                       styles.optionText,
-                      tempSortOption === option.value && styles.optionTextActive,
+                      tempSortOption === option.value &&
+                        styles.optionTextActive,
                     ]}
                   >
                     {option.label}
                   </Text>
                   {tempSortOption === option.value && (
-                    <Ionicons name='checkmark-circle' size={22} color='#16a34a' />
+                    <Ionicons
+                      name='checkmark-circle'
+                      size={22}
+                      color='#16a34a'
+                    />
                   )}
                 </TouchableOpacity>
               ))}
             </View>
             <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={styles.applyButton}
-                onPress={applySort}
-              >
+              <TouchableOpacity style={styles.applyButton} onPress={applySort}>
                 <Text style={styles.applyButtonText}>Apply Sort</Text>
               </TouchableOpacity>
             </View>
@@ -472,7 +478,10 @@ export default function SearchScreen() {
           >
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Filter By</Text>
-              <TouchableOpacity onPress={closeFilterModal} style={styles.closeButton}>
+              <TouchableOpacity
+                onPress={closeFilterModal}
+                style={styles.closeButton}
+              >
                 <Ionicons name='close' size={20} color='#666' />
               </TouchableOpacity>
             </View>
@@ -483,20 +492,28 @@ export default function SearchScreen() {
                   key={option.value}
                   style={[
                     styles.optionItem,
-                    tempFilterOption === option.value && styles.optionItemActive,
+                    tempFilterOption === option.value &&
+                      styles.optionItemActive,
                   ]}
-                  onPress={() => setTempFilterOption(option.value as FilterOption)}
+                  onPress={() =>
+                    setTempFilterOption(option.value as FilterOption)
+                  }
                 >
                   <Text
                     style={[
                       styles.optionText,
-                      tempFilterOption === option.value && styles.optionTextActive,
+                      tempFilterOption === option.value &&
+                        styles.optionTextActive,
                     ]}
                   >
                     {option.label}
                   </Text>
                   {tempFilterOption === option.value && (
-                    <Ionicons name='checkmark-circle' size={22} color='#16a34a' />
+                    <Ionicons
+                      name='checkmark-circle'
+                      size={22}
+                      color='#16a34a'
+                    />
                   )}
                 </TouchableOpacity>
               ))}
@@ -529,7 +546,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   backButton: {
-    padding: 4,
+    paddingHorizontal: 16,
+    borderWidth: 0.5,
+    width: '10%',
+    height: '100%',
+    borderColor: '#E0E0E0',
+    borderRadius: 4,
   },
   searchBar: {
     flex: 1,
@@ -538,14 +560,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 12,
+    borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.02)',
+    borderWidth: 0.5,
+    borderColor: '#E0E0E0',
     height: 48,
   },
   searchIcon: {
@@ -567,7 +589,7 @@ const styles = StyleSheet.create({
     borderLeftColor: '#f0f0f0',
     paddingLeft: 12,
   },
-  
+
   filterContainer: {
     paddingBottom: 12,
   },
@@ -610,11 +632,11 @@ const styles = StyleSheet.create({
   filterChipTextSelected: {
     color: '#16a34a',
   },
-  
+
   scrollView: {
     flex: 1,
   },
-  
+
   suggestionsContainer: {
     padding: 20,
   },
@@ -643,7 +665,7 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '500',
   },
-  
+
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -669,7 +691,7 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 8,
   },
-  
+
   resultsHeader: {
     paddingHorizontal: 20,
     paddingTop: 8,
@@ -686,7 +708,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 12,
   },
-  
+
   similarSection: {
     marginTop: 32,
     paddingBottom: 32,
@@ -701,7 +723,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingHorizontal: 20,
   },
-  
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',

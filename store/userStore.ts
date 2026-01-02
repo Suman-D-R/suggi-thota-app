@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { authAPI, userAPI } from '../lib/api';
+import { useCartStore } from './cartStore';
 
 export interface UserProfile {
   id: string;
@@ -182,6 +183,14 @@ export const useUserStore = create<UserState>((set, get) => ({
           googleUser: null, // Clear Google user after verification
         });
         
+        // Load cart from API after successful login
+        try {
+          await useCartStore.getState().loadCart();
+        } catch (error) {
+          console.error('Failed to load cart after login:', error);
+          // Don't fail login if cart loading fails
+        }
+        
         return true;
       } else {
         console.error('Verify OTP error:', response.message || 'Invalid OTP');
@@ -327,6 +336,14 @@ export const useUserStore = create<UserState>((set, get) => ({
             refreshToken: refresh,
           },
         });
+        
+        // Load cart from API if user is logged in
+        try {
+          await useCartStore.getState().loadCart();
+        } catch (error) {
+          console.error('Failed to load cart during initialization:', error);
+          // Don't fail initialization if cart loading fails
+        }
       }
     } catch (error) {
       console.error('Initialize user store error:', error);
