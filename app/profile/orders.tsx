@@ -1,61 +1,179 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useCallback, useState, useEffect } from 'react';
 import Header from '../../components/Header';
 import { Ionicons } from '@expo/vector-icons';
+import { orderAPI } from '../../lib/api';
+import { useUserStore } from '../../store/userStore';
 
-// Dummy orders data
-const orders = [
-  {
-    id: 'ORD001',
-    date: '2024-01-15',
-    status: 'Delivered',
-    items: 5,
-    total: 450,
-  },
-  {
-    id: 'ORD002',
-    date: '2024-01-10',
-    status: 'Delivered',
-    items: 3,
-    total: 320,
-  },
-  {
-    id: 'ORD003',
-    date: '2024-01-05',
-    status: 'Cancelled',
-    items: 2,
-    total: 180,
-  },
-];
+interface Order {
+  _id: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  total: number;
+  createdAt: string;
+  estimatedDeliveryTime?: string;
+  items: Array<{
+    productId: string | { _id: string; name: string };
+    quantity: number;
+    price: number;
+    total: number;
+  }>;
+}
 
 export default function OrdersScreen() {
   const router = useRouter();
+  const isLoggedIn = useUserStore((state) => state.isLoggedIn);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadOrders = useCallback(async () => {
+    if (!isLoggedIn) {
+      setOrders([]);
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await orderAPI.getUserOrders(1, 50);
+      
+      if (response.success && response.data?.orders) {
+        setOrders(response.data.orders);
+      } else if (response.success && Array.isArray(response.data)) {
+        // Handle different response formats
+        setOrders(response.data);
+      } else {
+        setOrders([]);
+      }
+    } catch (err: any) {
+      console.error('Failed to load orders:', err);
+      setError(err.message || 'Failed to load orders');
+      setOrders([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoggedIn]);
+
+  // Load orders on mount and when screen comes into focus
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadOrders();
+    }, [loadOrders])
+  );
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Delivered':
+    switch (status.toLowerCase()) {
+      case 'delivered':
         return '#4CAF50';
-      case 'Cancelled':
+      case 'cancelled':
         return '#FF5722';
-      case 'Processing':
+      case 'pending':
+      case 'confirmed':
+      case 'preparing':
+      case 'ready':
         return '#FF9800';
+      case 'out_for_delivery':
+        return '#2196F3';
+      case 'refunded':
+        return '#9E9E9E';
       default:
         return '#666';
     }
   };
 
   const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'Delivered':
+    switch (status.toLowerCase()) {
+      case 'delivered':
         return 'checkmark-circle';
-      case 'Cancelled':
+      case 'cancelled':
         return 'close-circle';
-      case 'Processing':
+      case 'pending':
+      case 'confirmed':
+      case 'preparing':
+      case 'ready':
         return 'time';
+      case 'out_for_delivery':
+        return 'car';
+      case 'refunded':
+        return 'refresh-circle';
       default:
         return 'ellipse';
     }
   };
+
+  const formatStatus = (status: string) => {
+    return status
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
+
+  const getItemsCount = (order: Order) => {
+    return order.items?.length || 0;
+  };
+
+  if (!isLoggedIn) {
+    return (
+      <View style={styles.container}>
+        <Header showBack={true} />
+        <View style={styles.emptyContainer}>
+          <Ionicons name="log-in-outline" size={64} color="#ccc" />
+          <Text style={styles.emptyText}>Please login to view orders</Text>
+          <Text style={styles.emptySubtext}>
+            Sign in to see your order history
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <Header showBack={true} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4CAF50" />
+          <Text style={styles.loadingText}>Loading orders...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <Header showBack={true} />
+        <View style={styles.emptyContainer}>
+          <Ionicons name="alert-circle-outline" size={64} color="#FF5722" />
+          <Text style={styles.emptyText}>Error loading orders</Text>
+          <Text style={styles.emptySubtext}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={loadOrders}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -75,7 +193,7 @@ export default function OrdersScreen() {
           </View>
         ) : (
           orders.map((order) => (
-            <View key={order.id} style={styles.orderCard}>
+            <View key={order._id} style={styles.orderCard}>
               <View style={styles.orderHeader}>
                 <View style={styles.orderHeaderLeft}>
                   <Ionicons
@@ -84,8 +202,8 @@ export default function OrdersScreen() {
                     color={getStatusColor(order.status)}
                   />
                   <View style={styles.orderInfo}>
-                    <Text style={styles.orderId}>Order #{order.id}</Text>
-                    <Text style={styles.orderDate}>{order.date}</Text>
+                    <Text style={styles.orderId}>Order #{order.orderNumber || order._id.slice(-6)}</Text>
+                    <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
                   </View>
                 </View>
                 <View
@@ -102,7 +220,7 @@ export default function OrdersScreen() {
                       { color: getStatusColor(order.status) },
                     ]}
                   >
-                    {order.status}
+                    {formatStatus(order.status)}
                   </Text>
                 </View>
               </View>
@@ -115,7 +233,7 @@ export default function OrdersScreen() {
                     <Ionicons name="cube-outline" size={18} color="#666" />
                     <Text style={styles.orderLabel}>Items</Text>
                   </View>
-                  <Text style={styles.orderValue}>{order.items}</Text>
+                  <Text style={styles.orderValue}>{getItemsCount(order)}</Text>
                 </View>
                 <View style={styles.orderRow}>
                   <View style={styles.orderRowLeft}>
@@ -128,7 +246,7 @@ export default function OrdersScreen() {
 
               <TouchableOpacity
                 style={styles.viewButton}
-                onPress={() => router.push(`/profile/orders/${order.id}`)}
+                onPress={() => router.push(`/profile/orders/${order._id}`)}
               >
                 <Text style={styles.viewButtonText}>View Details</Text>
                 <Ionicons name="chevron-forward" size={18} color="#4CAF50" />
@@ -170,6 +288,29 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 8,
     textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 16,
+  },
+  retryButton: {
+    marginTop: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: '#4CAF50',
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   orderCard: {
     backgroundColor: '#fff',

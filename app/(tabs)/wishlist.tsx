@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -8,16 +9,52 @@ import {
   View,
 } from 'react-native';
 import Header from '../../components/Header';
+import LoginModal from '../../components/LoginModal';
 import ProductCard from '../../components/ProductCard';
+import { useUserStore } from '../../store/userStore';
 import { useWishlistStore } from '../../store/wishlistStore';
 
 export default function WishlistTab() {
   const router = useRouter();
   const { items, removeItem } = useWishlistStore();
+  const isLoggedIn = useUserStore((state) => state.isLoggedIn);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   const handleRemoveFromWishlist = (productId: string) => {
     removeItem(productId);
   };
+
+  if (!isLoggedIn) {
+    return (
+      <View style={styles.container}>
+        <Header title='My Wishlist' />
+        <View style={styles.loginContainer}>
+          <View style={styles.loginContent}>
+            <Ionicons name='heart-outline' size={80} color='#4CAF50' />
+            <Text style={styles.loginTitle}>Your Wishlist</Text>
+            <Text style={styles.loginSubtitle}>
+              Sign in to save your favorite products and access them anytime
+            </Text>
+            <TouchableOpacity
+              style={styles.loginButton}
+              onPress={() => {
+                setShowLoginModal(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.loginButtonText}>Sign In</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        <LoginModal
+          visible={showLoginModal}
+          onClose={() => setShowLoginModal(false)}
+          title='Login Required'
+          message='Please login to access your wishlist'
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -47,13 +84,6 @@ export default function WishlistTab() {
               {items.map((product) => (
                 <View key={product._id} style={styles.productWrapper}>
                   <ProductCard product={product} />
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => handleRemoveFromWishlist(product._id)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name='heart' size={20} color='#e74c3c' />
-                  </TouchableOpacity>
                 </View>
               ))}
             </View>
@@ -135,5 +165,42 @@ const styles = StyleSheet.create({
     elevation: 3,
     zIndex: 10,
   },
+  loginContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  loginContent: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  loginTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 24,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  loginSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 24,
+  },
+  loginButton: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    width: '100%',
+    alignItems: 'center',
+  },
+  loginButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
 });
-

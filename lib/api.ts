@@ -35,6 +35,22 @@ export const productAPI = {
     return await response.json();
   },
 
+  getByLocation: async (params: { lat: number; lng: number; page?: number; limit?: number; search?: string; category?: string; isFeatured?: boolean; maxDistance?: number }) => {
+    const queryParams = new URLSearchParams();
+
+    queryParams.append('lat', params.lat.toString());
+    queryParams.append('lng', params.lng.toString());
+    if (params.page) queryParams.append('page', params.page.toString());
+    if (params.limit) queryParams.append('limit', params.limit.toString());
+    if (params.search) queryParams.append('search', params.search);
+    if (params.category) queryParams.append('category', params.category);
+    if (params.isFeatured !== undefined) queryParams.append('isFeatured', params.isFeatured.toString());
+    if (params.maxDistance) queryParams.append('maxDistance', params.maxDistance.toString());
+
+    const response = await fetch(`${API_BASE_URL}/products/location?${queryParams}`);
+    return await response.json();
+  },
+
   getById: async (id: string) => {
     const response = await fetch(`${API_BASE_URL}/products/${id}`);
     return await response.json();
@@ -105,13 +121,16 @@ export const authAPI = {
     }
   },
 
-  verifyOTP: async (phoneNumber: string, otp: string, email?: string, name?: string) => {
+  verifyOTP: async (phoneNumber: string, otp: string, email?: string, name?: string, cartData?: { storeId: string; items: Array<{ productId: string; size: number; unit: string; quantity: number }> }) => {
     const url = `${API_BASE_URL}/auth/verify-otp`;
     const body: any = { phoneNumber, otp };
     if (email) body.email = email;
     if (name) body.name = name;
+    if (cartData && cartData.storeId && cartData.items && cartData.items.length > 0) {
+      body.cartData = cartData;
+    }
     
-    console.log('Verifying OTP request:', { url, body: { ...body, otp: '***' } });
+    console.log('Verifying OTP request:', { url, body: { ...body, otp: '***', cartData: cartData ? { ...cartData, items: cartData.items.length } : undefined } });
     
     try {
       const response = await fetch(url, {
@@ -211,9 +230,12 @@ export const userAPI = {
 
 // Cart API
 export const cartAPI = {
-  getCart: async () => {
+  getCart: async (storeId: string) => {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/cart`, {
+    const queryParams = new URLSearchParams();
+    queryParams.append('storeId', storeId);
+    
+    const response = await fetch(`${API_BASE_URL}/cart?${queryParams}`, {
       headers,
     });
     
@@ -226,12 +248,26 @@ export const cartAPI = {
     return data;
   },
 
-  addItem: async (productId: string, size: number, unit: string, quantity: number = 1, price: number) => {
+  addItem: async (productId: string, size: number, unit: string, quantity: number = 1, price: number, storeId?: string, sku?: string) => {
     const headers = await getAuthHeaders();
-    const body = { productId, size, unit, quantity, price };
+    
+    // Get storeId from location store if not provided
+    let finalStoreId = storeId;
+    if (!finalStoreId) {
+      const { useLocationStore } = require('../store/locationStore');
+      finalStoreId = useLocationStore.getState().selectedStore?._id;
+    }
+    
+    if (!finalStoreId) {
+      throw new Error('Store ID is required. Please select a store first.');
+    }
+    
+    // Use SKU if provided, otherwise construct from size and unit
+    const variantSku = sku || `${size}_${unit}`;
+    const body = { productId, size, unit, quantity, price, storeId: finalStoreId, variantSku };
     
     // Debug logging
-    console.log('Cart API - addItem:', { productId, size, unit, quantity, price });
+    console.log('Cart API - addItem:', { productId, size, unit, quantity, price, storeId: finalStoreId, variantSku });
     
     const response = await fetch(`${API_BASE_URL}/cart/items`, {
       method: 'POST',
@@ -249,12 +285,26 @@ export const cartAPI = {
     return data;
   },
 
-  updateItem: async (productId: string, size: number, unit: string, quantity: number) => {
+  updateItem: async (productId: string, size: number, unit: string, quantity: number, storeId?: string, sku?: string) => {
     const headers = await getAuthHeaders();
-    const body = { productId, size, unit, quantity };
+    
+    // Get storeId from location store if not provided
+    let finalStoreId = storeId;
+    if (!finalStoreId) {
+      const { useLocationStore } = require('../store/locationStore');
+      finalStoreId = useLocationStore.getState().selectedStore?._id;
+    }
+    
+    if (!finalStoreId) {
+      throw new Error('Store ID is required. Please select a store first.');
+    }
+    
+    // Use SKU if provided, otherwise construct from size and unit
+    const variantSku = sku || `${size}_${unit}`;
+    const body = { productId, size, unit, quantity, storeId: finalStoreId, variantSku };
     
     // Debug logging
-    console.log('Cart API - updateItem:', { productId, size, unit, quantity });
+    console.log('Cart API - updateItem:', { productId, size, unit, quantity, storeId: finalStoreId, variantSku });
     console.log('Cart API - updateItem body:', body);
     
     const response = await fetch(`${API_BASE_URL}/cart/items`, {
@@ -273,16 +323,112 @@ export const cartAPI = {
     return data;
   },
 
-  removeItem: async (productId: string, size?: number, unit?: string) => {
+  removeItem: async (productId: string, size?: number, unit?: string, storeId?: string, sku?: string) => {
     const headers = await getAuthHeaders();
-    const body: any = { productId };
-    if (size !== undefined) body.size = size;
-    if (unit !== undefined) body.unit = unit;
+    
+    // Get storeId from location store if not provided
+    let finalStoreId = storeId;
+    if (!finalStoreId) {
+      const { useLocationStore } = require('../store/locationStore');
+      finalStoreId = useLocationStore.getState().selectedStore?._id;
+    }
+    
+    if (!finalStoreId) {
+      throw new Error('Store ID is required. Please select a store first.');
+    }
+    
+    // Construct variantSku from size/unit or use provided sku
+    let variantSku: string | undefined;
+    if (sku) {
+      variantSku = sku;
+    } else if (size !== undefined && unit) {
+      variantSku = `${size}_${unit}`;
+    } else {
+      throw new Error('Variant SKU is required. Please provide size and unit, or SKU.');
+    }
+    
+    const body = { productId, storeId: finalStoreId, variantSku };
+    
+    // Debug logging
+    console.log('Cart API - removeItem:', { productId, size, unit, storeId: finalStoreId, variantSku });
+    console.log('Cart API - removeItem body:', body);
     
     const response = await fetch(`${API_BASE_URL}/cart/items`, {
       method: 'DELETE',
       headers,
       body: JSON.stringify(body),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      console.error('Cart API - removeItem error:', data);
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+
+  clearCart: async (storeId: string) => {
+    const headers = await getAuthHeaders();
+    const queryParams = new URLSearchParams();
+    queryParams.append('storeId', storeId);
+    
+    const response = await fetch(`${API_BASE_URL}/cart?${queryParams}`, {
+      method: 'DELETE',
+      headers,
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+};
+
+// Order API
+export const orderAPI = {
+  createOrder: async (orderData: {
+    deliveryAddressId: string;
+    paymentMethod: 'cod' | 'online' | 'wallet';
+    couponCode?: string;
+    deliveryFee?: number;
+    tax?: number;
+    discount?: number;
+    deliveryInstructions?: string;
+    orderNotes?: string;
+  }) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/orders`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(orderData),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      // Create error with response data for better error handling
+      const error: any = new Error(data.message || `HTTP error! status: ${response.status}`);
+      error.response = response;
+      error.data = data;
+      throw error;
+    }
+    
+    return data;
+  },
+
+  getUserOrders: async (page?: number, limit?: number) => {
+    const headers = await getAuthHeaders();
+    const queryParams = new URLSearchParams();
+    if (page) queryParams.append('page', page.toString());
+    if (limit) queryParams.append('limit', limit.toString());
+    
+    const response = await fetch(`${API_BASE_URL}/orders?${queryParams}`, {
+      headers,
     });
     
     const data = await response.json();
@@ -294,9 +440,127 @@ export const cartAPI = {
     return data;
   },
 
-  clearCart: async () => {
+  getOrderById: async (orderId: string) => {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/cart`, {
+    const response = await fetch(`${API_BASE_URL}/orders/${orderId}`, {
+      headers,
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+};
+
+// Address API
+export const addressAPI = {
+  getAddresses: async () => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/addresses`, {
+      headers,
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+
+  getAddressById: async (addressId: string) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/addresses/${addressId}`, {
+      headers,
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+
+  createAddress: async (addressData: {
+    type?: 'home' | 'work' | 'other';
+    label?: string;
+    street: string;
+    apartment?: string;
+    landmark?: string;
+    city: string;
+    state: string;
+    pincode?: string;
+    country?: string;
+    contactName: string;
+    contactPhone: string;
+    coordinates?: {
+      latitude: number;
+      longitude: number;
+    };
+    deliveryInstructions?: string;
+    isDefault?: boolean;
+  }) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/addresses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(addressData),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+
+  updateAddress: async (addressId: string, addressData: {
+    type?: 'home' | 'work' | 'other';
+    label?: string;
+    street?: string;
+    apartment?: string;
+    landmark?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    country?: string;
+    contactName?: string;
+    contactPhone?: string;
+    coordinates?: {
+      latitude: number;
+      longitude: number;
+    };
+    deliveryInstructions?: string;
+    isDefault?: boolean;
+  }) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/addresses/${addressId}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(addressData),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+
+  deleteAddress: async (addressId: string) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/addresses/${addressId}`, {
       method: 'DELETE',
       headers,
     });
@@ -308,5 +572,66 @@ export const cartAPI = {
     }
     
     return data;
+  },
+
+  setDefaultAddress: async (addressId: string) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/addresses/${addressId}/default`, {
+      method: 'PATCH',
+      headers,
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+};
+
+// Store API
+export const storeAPI = {
+  findNearby: async (lat: number, lng: number, maxDistance?: number) => {
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('lat', lat.toString());
+      queryParams.append('lng', lng.toString());
+      if (maxDistance) queryParams.append('maxDistance', maxDistance.toString());
+
+      const url = `${API_BASE_URL}/stores/nearby/search?${queryParams}`;
+      console.log('Store API - findNearby request:', { url, lat, lng, maxDistance });
+
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      console.log('Store API - findNearby response:', { 
+        status: response.status, 
+        ok: response.ok,
+        success: data.success,
+        hasStores: data.data?.stores?.length > 0 
+      });
+      
+      if (!response.ok) {
+        const errorMessage = data.message || `HTTP error! status: ${response.status}`;
+        console.error('Store API - findNearby error:', { 
+          status: response.status, 
+          message: errorMessage,
+          data 
+        });
+        throw new Error(errorMessage);
+      }
+      
+      return data;
+    } catch (error: any) {
+      // Handle network errors separately
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        console.error('Store API - Network error:', error);
+        throw new Error('Network error: Unable to connect to server. Please check your internet connection.');
+      }
+      // Re-throw other errors
+      throw error;
+    }
   },
 };

@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { authAPI, userAPI } from '../lib/api';
 import { useCartStore } from './cartStore';
+import { useLocationStore } from './locationStore';
 
 export interface UserProfile {
   id: string;
@@ -133,12 +134,43 @@ export const useUserStore = create<UserState>((set, get) => ({
       // Use name from googleUser if available, otherwise use provided name
       const userName = googleUser?.name || name;
       
-      // Send phone number, OTP, and name to backend - backend will verify and authenticate
+      // Prepare cart data to send with login request
+      let cartData: { storeId: string; items: Array<{ productId: string; size: number; unit: string; quantity: number }> } | undefined;
+      const localCartItems = useCartStore.getState().items;
+      const selectedStore = useLocationStore.getState().selectedStore;
+      
+      if (localCartItems.length > 0 && selectedStore?._id) {
+        const cartItems = localCartItems
+          .filter(item => item.selectedVariant) // Only include items with valid variants
+          .map(item => ({
+            productId: item._id,
+            size: item.selectedVariant!.size,
+            unit: item.selectedVariant!.unit,
+            quantity: item.quantity,
+            sku: item.selectedVariant!.sku, // Include SKU from variant if available
+          }));
+        
+        cartData = {
+          storeId: selectedStore._id,
+          items: cartItems,
+        };
+        
+        console.log('UserStore: Preparing cart data for login:', {
+          storeId: cartData.storeId,
+          itemsCount: cartItems.length,
+          items: cartItems.map(i => ({ productId: i.productId, size: i.size, unit: i.unit, quantity: i.quantity }))
+        });
+      } else {
+        console.log('UserStore: No cart data to send - localCartItems:', localCartItems.length, 'selectedStore:', selectedStore?._id);
+      }
+      
+      // Send phone number, OTP, name, and cart data to backend - backend will verify and authenticate
       const response = await authAPI.verifyOTP(
         cleanedPhone,
         otp,
         googleUser?.email,
-        userName
+        userName,
+        cartData
       );
       
       // Check if name is required (for new users)
@@ -183,9 +215,31 @@ export const useUserStore = create<UserState>((set, get) => ({
           googleUser: null, // Clear Google user after verification
         });
         
-        // Load cart from API after successful login
+        // Load cart from API after successful login (cart data was already saved during login)
+        // If we sent cart data, preserve local items if backend cart is empty
+        const hadLocalCart = cartData && cartData.items.length > 0;
+        
         try {
-          await useCartStore.getState().loadCart();
+          // Small delay to ensure backend has saved the cart
+          if (hadLocalCart) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          
+          // Load cart with preserveLocalIfEmpty flag if we had local cart
+          await useCartStore.getState().loadCart(hadLocalCart);
+          
+          // If we still have no items after load and we had local cart, try syncing again
+          const currentItems = useCartStore.getState().items;
+          if (hadLocalCart && currentItems.length === 0) {
+            console.warn('Cart is still empty after load, attempting to sync local items again');
+            try {
+              await useCartStore.getState().syncLocalCartToBackend();
+              await new Promise(resolve => setTimeout(resolve, 500));
+              await useCartStore.getState().loadCart(false);
+            } catch (syncError) {
+              console.error('Failed to sync cart after login:', syncError);
+            }
+          }
         } catch (error) {
           console.error('Failed to load cart after login:', error);
           // Don't fail login if cart loading fails

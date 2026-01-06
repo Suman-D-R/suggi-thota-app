@@ -1,56 +1,111 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 import Header from '../../components/Header';
 import ProductCard from '../../components/ProductCard';
-import { productAPI } from '../../lib/api';
+import { productAPI, storeAPI } from '../../lib/api';
+import { useLocationStore } from '../../store/locationStore';
 
 interface Product {
   _id: string;
   name: string;
-  price: number;
+  originalPrice: number;
+  sellingPrice: number;
   unit: string;
+  size: number;
+  variants?: Array<{
+    sku?: string;
+    size: number;
+    unit: string;
+    originalPrice?: number;
+    sellingPrice?: number;
+    discount?: number;
+    stock?: number;
+    isAvailable?: boolean;
+    isOutOfStock?: boolean;
+  }>;
   category?: { _id: string; name: string };
   images?: string[];
   discount?: number;
   description?: string;
   isActive: boolean;
   isFeatured: boolean;
+  stock?: number;
+  isAvailable?: boolean;
+  isOutOfStock?: boolean;
 }
 
 export default function FruitsScreen() {
+  const router = useRouter();
   const [fruits, setFruits] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasStore, setHasStore] = useState<boolean | null>(null);
+  const selectedAddress = useLocationStore((state) => state.getSelectedAddress());
 
   useEffect(() => {
     loadFruits();
-  }, []);
+  }, [selectedAddress?.id]);
 
   const loadFruits = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // For now, we'll load all products and filter by category name
-      // In the future, we can pass the category ID to the API
-      const response = await productAPI.getAll({
-        isActive: true,
-        limit: 100 // Load more products for category pages
-      });
+      // Check if location is selected
+      const address = selectedAddress;
+      if (!address || !address.coordinates) {
+        setError('Please select a delivery location to view products');
+        setHasStore(false);
+        setFruits([]);
+        setLoading(false);
+        return;
+      }
 
-      if (response.success) {
-        // Filter products that belong to fruits category
-        const fruitProducts = response.data?.filter((product: Product) =>
-          product.category?.name?.toLowerCase().includes('fruit') ||
-          product.category?.name?.toLowerCase().includes('fruits')
-        ) || [];
-        setFruits(fruitProducts);
-      } else {
-        setError('Failed to load fruits');
+      const { latitude, longitude } = address.coordinates;
+
+      // Check if store is available at this location
+      try {
+        const storesResponse = await storeAPI.findNearby(latitude, longitude, 10);
+        if (storesResponse.success && storesResponse.data?.stores && storesResponse.data.stores.length > 0) {
+          setHasStore(true);
+          
+          // Load products for this location with category filter
+          const productsResponse = await productAPI.getByLocation({
+            lat: latitude,
+            lng: longitude,
+            limit: 100,
+            maxDistance: 10,
+          });
+
+          if (productsResponse.success) {
+            const productsData = productsResponse.data?.products || productsResponse.data || [];
+            // Filter products that belong to fruits category
+            const fruitProducts = productsData.filter((product: Product) =>
+              product.category?.name?.toLowerCase().includes('fruit') ||
+              product.category?.name?.toLowerCase().includes('fruits')
+            );
+            setFruits(fruitProducts);
+          } else {
+            setError('Failed to load fruits');
+            setFruits([]);
+          }
+        } else {
+          setHasStore(false);
+          setFruits([]);
+          setError('No store available at this location. Please select a different location.');
+        }
+      } catch (storeErr: any) {
+        console.error('Error checking store availability:', storeErr);
+        setHasStore(false);
+        setFruits([]);
+        setError('Unable to check store availability. Please try again.');
       }
     } catch (err) {
       setError('Failed to load fruits');
       console.error('Error loading fruits:', err);
+      setHasStore(false);
+      setFruits([]);
     } finally {
       setLoading(false);
     }
@@ -68,13 +123,16 @@ export default function FruitsScreen() {
     );
   }
 
-  if (error) {
+  if (error && hasStore === false) {
     return (
       <View style={styles.container}>
         <Header showBack={true} />
         <View style={[styles.container, styles.centerContent]}>
           <Text style={styles.errorText}>{error}</Text>
           <Text style={styles.retryText} onPress={loadFruits}>Tap to retry</Text>
+          <Text style={[styles.retryText, { marginTop: 16 }]} onPress={() => router.push('/profile/add-address')}>
+            Change Location
+          </Text>
         </View>
       </View>
     );

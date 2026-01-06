@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { IconMapPinFilled } from '@tabler/icons-react-native';
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -13,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocationStore } from '../store/locationStore';
+import { useUserStore } from '../store/userStore';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -26,25 +28,45 @@ export default function LocationHeader() {
     (state) => state.selectedAddressId
   );
   const selectAddress = useLocationStore((state) => state.selectAddress);
+  const initializeLocation = useLocationStore(
+    (state) => state.initializeLocation
+  );
+  const isLoggedIn = useUserStore((state) => state.isLoggedIn);
   const selectedAddress =
     addresses.find((addr) => addr.id === selectedAddressId) || null;
+
+  // Initialize location if no addresses are available
+  useEffect(() => {
+    if (addresses.length === 0) {
+      initializeLocation();
+    }
+  }, [addresses.length, initializeLocation]);
+
+  const handleHeaderPress = () => {
+    // If user is not logged in, redirect directly to add address page
+    if (!isLoggedIn) {
+      router.push('/profile/add-address');
+      return;
+    }
+    // If logged in, open the drawer as usual
+    openDrawer();
+  };
 
   const openDrawer = () => {
     setIsDrawerOpen(true);
     // Reset value just in case
     slideAnim.setValue(0);
-    Animated.spring(slideAnim, {
+    Animated.timing(slideAnim, {
       toValue: 1,
+      duration: 300,
       useNativeDriver: true,
-      tension: 50,
-      friction: 8,
     }).start();
   };
 
   const handleClose = () => {
     Animated.timing(slideAnim, {
       toValue: 0,
-      duration: 200,
+      duration: 250,
       useNativeDriver: true,
     }).start(() => {
       setIsDrawerOpen(false);
@@ -80,7 +102,7 @@ export default function LocationHeader() {
         <TouchableOpacity
           style={styles.headerButton}
           activeOpacity={0.6}
-          onPress={openDrawer}
+          onPress={handleHeaderPress}
         >
           <Ionicons name='location' size={16} color='#f23737ff' />
           <View style={styles.headerTextContainer}>
@@ -121,20 +143,17 @@ export default function LocationHeader() {
               styles.drawer,
               {
                 transform: [{ translateY }],
-                paddingBottom: Math.max(insets.bottom, 20),
+                paddingBottom: Math.max(insets.bottom, 24),
               },
             ]}
           >
-            <View style={styles.drawerHandle} />
-
+            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+              <Ionicons name='close' size={24} color='#FFFFFF' />
+            </TouchableOpacity>
             <View style={styles.drawerHeader}>
-              <Text style={styles.drawerTitle}>Choose Delivery Location</Text>
-              <TouchableOpacity
-                onPress={handleClose}
-                style={styles.closeButton}
-              >
-                <Ionicons name='close' size={20} color='#666' />
-              </TouchableOpacity>
+              <View style={styles.drawerTitleContainer}>
+                <Text style={styles.drawerTitle}>Choose Delivery Location</Text>
+              </View>
             </View>
 
             <ScrollView
@@ -152,28 +171,14 @@ export default function LocationHeader() {
                   onPress={() => handleAddressSelect(address.id)}
                   activeOpacity={0.7}
                 >
-                  <View
-                    style={[
-                      styles.addressIcon,
-                      selectedAddress?.id === address.id && styles.selectedIcon,
-                    ]}
-                  >
-                    <Ionicons
-                      name={
-                        address.label === 'Home'
-                          ? 'home'
-                          : address.label === 'Work'
-                          ? 'briefcase'
-                          : 'location'
-                      }
-                      size={20}
-                      color={
-                        selectedAddress?.id === address.id ? '#16a34a' : '#666'
-                      }
-                    />
-                  </View>
-
-                  <View style={styles.addressContent}>
+                  <IconMapPinFilled
+                    size={16}
+                    color={
+                      selectedAddress?.id === address.id ? '#16a34a' : '#FF0000'
+                    }
+                    style={styles.addressIcon}
+                  />
+                  <View style={styles.addressDetails}>
                     <View style={styles.labelRow}>
                       <Text
                         style={[
@@ -181,6 +186,8 @@ export default function LocationHeader() {
                           selectedAddress?.id === address.id &&
                             styles.selectedText,
                         ]}
+                        numberOfLines={1}
+                        ellipsizeMode='tail'
                       >
                         {address.label}
                       </Text>
@@ -190,9 +197,53 @@ export default function LocationHeader() {
                         </View>
                       )}
                     </View>
-                    <Text style={styles.addressText} numberOfLines={2}>
+                    {address.street && (
+                      <Text
+                        style={styles.addressMainText}
+                        numberOfLines={1}
+                        ellipsizeMode='tail'
+                      >
+                        {address.street}
+                      </Text>
+                    )}
+                    <Text
+                      style={styles.addressText}
+                      numberOfLines={2}
+                      ellipsizeMode='tail'
+                    >
                       {address.address}
                     </Text>
+                    {(address.landmark || address.city || address.pincode) && (
+                      <View style={styles.addressMeta}>
+                        {address.landmark && (
+                          <Text
+                            style={styles.addressMetaText}
+                            numberOfLines={1}
+                            ellipsizeMode='tail'
+                          >
+                            {address.landmark}
+                          </Text>
+                        )}
+                        {address.city && address.landmark && (
+                          <Text style={styles.addressMetaText}> • </Text>
+                        )}
+                        {address.city && (
+                          <Text
+                            style={styles.addressMetaText}
+                            numberOfLines={1}
+                            ellipsizeMode='tail'
+                          >
+                            {address.city}
+                          </Text>
+                        )}
+                        {address.pincode && (
+                          <Text style={styles.addressMetaText}>
+                            {' • '}
+                            {address.pincode}
+                          </Text>
+                        )}
+                      </View>
+                    )}
                   </View>
                 </TouchableOpacity>
               ))}
@@ -256,84 +307,91 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   drawer: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FBFBFB',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '85%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 10,
-  },
-  drawerHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 20,
+    shadowRadius: 4,
+    paddingTop: 20,
+    position: 'relative',
   },
   drawerHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    marginBottom: 20,
+    paddingHorizontal: 32,
+    marginBottom: 4,
+  },
+  drawerTitleContainer: {
+    flex: 1,
+    marginRight: 12,
   },
   drawerTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
+    marginBottom: 4,
     color: '#1a1a1a',
   },
   closeButton: {
-    padding: 4,
-    backgroundColor: '#F5F5F5',
+    position: 'absolute',
+    right: '50%',
+    transform: [{ translateX: '50%' }],
+    top: '-20%',
+    padding: 8,
+    backgroundColor: '#1A1A1A',
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#5B5B5B',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   addressesList: {
     paddingHorizontal: 24,
+    paddingBottom: 24,
   },
   addressItem: {
     flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
+    alignItems: 'flex-start',
+    padding: 12,
     backgroundColor: '#fff',
-    borderRadius: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
+    borderRadius: 14,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    borderWidth: 0.2,
+    borderColor: '#E0E0E0',
+    minWidth: 0,
   },
   selectedItem: {
     borderColor: '#16a34a',
     backgroundColor: '#F0FDF4',
   },
   addressIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
+    marginTop: 2,
+    flexShrink: 0,
   },
-  selectedIcon: {
-    backgroundColor: '#fff',
-  },
-  addressContent: {
+  addressDetails: {
     flex: 1,
+    minWidth: 0,
   },
   labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 4,
+    flexShrink: 1,
   },
   addressLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#1a1a1a',
+    flexShrink: 1,
   },
   selectedText: {
     color: '#16a34a',
@@ -346,10 +404,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  addressMainText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 4,
+    flexShrink: 1,
+  },
   addressText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666',
-    lineHeight: 18,
+    marginBottom: 6,
+    lineHeight: 20,
+    flexShrink: 1,
+  },
+  addressMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    flexShrink: 1,
+  },
+  addressMetaText: {
+    fontSize: 10,
+    color: '#999',
+    flexShrink: 1,
   },
   addButton: {
     flexDirection: 'row',

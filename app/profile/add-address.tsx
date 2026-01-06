@@ -1,20 +1,18 @@
 import {
-  IconArrowLeft,
-  IconBuilding,
   IconCurrentLocation,
-  IconHome,
   IconMap,
-  IconMapPin,
+  IconMapPinFilled,
   IconSearch,
-  IconUser,
   IconX,
 } from '@tabler/icons-react-native';
 import * as Location from 'expo-location';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Dimensions,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -25,132 +23,115 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Address, useLocationStore } from '../../store/locationStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Header from '../../components/Header';
+import { useLocationStore } from '../../store/locationStore';
+import { useUserStore } from '../../store/userStore';
 
-// Try to import react-native-maps, fallback if not available
 let MapView: any = null;
-let Marker: any = null;
 let PROVIDER_GOOGLE: any = null;
 
 try {
   const maps = require('react-native-maps');
   MapView = maps.default || maps.MapView;
-  Marker = maps.Marker;
   PROVIDER_GOOGLE = maps.PROVIDER_GOOGLE;
-} catch (error) {
-  console.warn('react-native-maps not available, using fallback');
+} catch (e) {
+  console.warn('Maps not available');
 }
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface LocationData {
   latitude: number;
   longitude: number;
   address: string;
-  label?: string;
+  street?: string;
+  district?: string;
+  city?: string;
+  region?: string;
+  postalCode?: string;
+  country?: string;
+  name?: string;
 }
 
 export default function AddAddressScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string }>();
-  const isEditMode = !!params.id;
   const mapRef = useRef<any>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const { addAddress, updateAddress, addresses } = useLocationStore();
+  const insets = useSafeAreaInsets();
+  const geocodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isUserInteractingRef = useRef(false);
+  const isProgrammaticMoveRef = useRef(false);
+  const pendingSearchCoordinatesRef = useRef<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
-  const existingAddress = isEditMode
-    ? addresses.find((addr) => addr.id === params.id)
-    : null;
+  const { addAddress, updateAddress, createAddress, addresses, removeAddress } =
+    useLocationStore();
+  const isLoggedIn = useUserStore((state) => state.isLoggedIn);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(
     null
   );
   const [isLoading, setIsLoading] = useState(false);
-  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const slideAnim = useRef(new Animated.Value(0)).current;
+
   const [flatHouseNo, setFlatHouseNo] = useState('');
+  const [street, setStreet] = useState('');
+  const [city, setCity] = useState('');
   const [fullName, setFullName] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
-  const [alternatePhone, setAlternatePhone] = useState('');
   const [addressType, setAddressType] = useState<'Home' | 'Work'>('Home');
+
   const [region, setRegion] = useState({
-    latitude: 28.7041, // Default to Delhi
+    latitude: 28.7041,
     longitude: 77.1025,
     latitudeDelta: 0.01,
     longitudeDelta: 0.01,
   });
 
   useEffect(() => {
-    if (isEditMode && existingAddress) {
-      // Pre-populate form fields with existing address data
-      setAddressType(existingAddress.label as 'Home' | 'Work');
-      // Parse the address to extract flat/house no if possible
-      const addressParts = existingAddress.address.split(', ');
-      if (addressParts.length > 1) {
-        setFlatHouseNo(addressParts[0]);
-        // Set the rest as the location address
-        const locationAddress = addressParts.slice(1).join(', ');
-        setSelectedLocation({
-          latitude: 28.7041, // Default, could be enhanced to store coordinates
-          longitude: 77.1025,
-          address: locationAddress,
-          label: existingAddress.label,
-        });
-      } else {
-        setSelectedLocation({
-          latitude: 28.7041,
-          longitude: 77.1025,
-          address: existingAddress.address,
-          label: existingAddress.label,
-        });
-      }
-      // Open the modal automatically in edit mode
-      setShowAddressModal(true);
-    }
-  }, [isEditMode, existingAddress]);
+    requestPermission();
+  }, []);
 
-  useEffect(() => {
-    if (!isEditMode) {
-      requestLocationPermission();
-    }
-  }, [isEditMode]);
-
-  const requestLocationPermission = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        getCurrentLocation();
-      }
-    } catch (error) {
-      console.error('Error requesting location permission:', error);
-    }
+  const requestPermission = async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status === 'granted') getCurrentLocation();
   };
 
   const getCurrentLocation = async () => {
     try {
       setIsLoading(true);
-      const location = await Location.getCurrentPositionAsync({});
-      const { latitude, longitude } = location.coords;
+      isProgrammaticMoveRef.current = true;
+      const loc = await Location.getCurrentPositionAsync({});
+      const { latitude, longitude } = loc.coords;
 
-      setRegion({
+      const newRegion = {
         latitude,
         longitude,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
-      });
+      };
 
-      mapRef.current?.animateToRegion(
-        {
-          latitude,
-          longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        },
-        1000
-      );
+      setRegion(newRegion);
+      mapRef.current?.animateToRegion(newRegion, 800);
 
-      await reverseGeocode(latitude, longitude);
-    } catch (error) {
-      console.error('Error getting current location:', error);
-      Alert.alert('Error', 'Unable to get your current location');
+      // Clear any pending geocode calls
+      if (geocodeTimeoutRef.current) {
+        clearTimeout(geocodeTimeoutRef.current);
+      }
+
+      reverseGeocode(latitude, longitude);
+
+      // Reset flag after animation completes
+      setTimeout(() => {
+        isProgrammaticMoveRef.current = false;
+      }, 1000);
+    } catch {
+      Alert.alert('Error', 'Unable to fetch location');
+      isProgrammaticMoveRef.current = false;
     } finally {
       setIsLoading(false);
     }
@@ -159,189 +140,324 @@ export default function AddAddressScreen() {
   const reverseGeocode = async (latitude: number, longitude: number) => {
     try {
       setIsLoading(true);
-      const geocode = await Location.reverseGeocodeAsync({
-        latitude,
-        longitude,
-      });
+      const res = await Location.reverseGeocodeAsync({ latitude, longitude });
 
-      if (geocode.length > 0) {
-        const address = geocode[0];
-        const addressString = [
-          address.street,
-          address.streetNumber,
-          address.district,
-          address.city,
-          address.region,
-          address.country,
-        ]
+      if (res.length) {
+        const a = res[0];
+        // Create full address string
+        const address = [a.name, a.street, a.city, a.region, a.country]
           .filter(Boolean)
-          .join(' - ');
+          .join(', ');
 
         setSelectedLocation({
           latitude,
           longitude,
-          address: addressString || `${latitude}, ${longitude}`,
+          address,
+          street: a.street || a.name || undefined,
+          district: a.district || a.subregion || undefined,
+          city: a.city || undefined,
+          region: a.region || undefined,
+          postalCode: a.postalCode || undefined,
+          country: a.country || undefined,
+          name: a.name || undefined,
         });
+
+        // Pre-fill street and city from location if available
+        if (a.street || a.name) {
+          setStreet(a.street || a.name || '');
+        }
+        if (a.city) {
+          setCity(a.city);
+        }
       }
-    } catch (error) {
-      console.error('Error reverse geocoding:', error);
+    } catch {
       setSelectedLocation({
         latitude,
         longitude,
-        address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+        address: `${latitude}, ${longitude}`,
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleMapPress = (event: any) => {
-    const { latitude, longitude } = event.nativeEvent.coordinate;
-    setRegion({
-      ...region,
-      latitude,
-      longitude,
-    });
-    reverseGeocode(latitude, longitude);
-  };
+  const onRegionChangeComplete = (r: any) => {
+    setRegion(r);
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
+    // If this is a programmatic move (search, current location), handle it specially
+    if (isProgrammaticMoveRef.current && pendingSearchCoordinatesRef.current) {
+      // Use the actual region center coordinates from the map for more accurate reverse geocoding
+      // This ensures we get the address for the exact center point visible on the map
+      reverseGeocode(r.latitude, r.longitude);
+      pendingSearchCoordinatesRef.current = null;
+      // Reset flag after a short delay to ensure reverse geocoding completes
+      setTimeout(() => {
+        isProgrammaticMoveRef.current = false;
+      }, 100);
+      return;
+    }
 
-    try {
-      setIsLoading(true);
-      const geocode = await Location.geocodeAsync(searchQuery);
+    // Skip if this is still a programmatic move (current location, etc.)
+    if (isProgrammaticMoveRef.current) {
+      return;
+    }
 
-      if (geocode.length > 0) {
-        const { latitude, longitude } = geocode[0];
+    // Clear any pending geocode calls
+    if (geocodeTimeoutRef.current) {
+      clearTimeout(geocodeTimeoutRef.current);
+    }
 
-        setRegion({
-          latitude,
-          longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        });
-
-        mapRef.current?.animateToRegion(
-          {
-            latitude,
-            longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          },
-          1000
-        );
-
-        await reverseGeocode(latitude, longitude);
-      } else {
-        Alert.alert(
-          'Not Found',
-          'Location not found. Please try a different search.'
-        );
+    // Debounce geocoding to prevent flickering during zoom/pan
+    geocodeTimeoutRef.current = setTimeout(() => {
+      // Only geocode if user is not actively interacting
+      if (!isUserInteractingRef.current && !isProgrammaticMoveRef.current) {
+        reverseGeocode(r.latitude, r.longitude);
       }
-    } catch (error) {
-      console.error('Error geocoding:', error);
-      Alert.alert('Error', 'Unable to search location. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+    }, 500);
   };
 
-  const handleAddAddressDetails = () => {
-    if (!selectedLocation) {
-      Alert.alert('Error', 'Please select a location on the map');
-      return;
+  const interactionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+
+  const onRegionChange = () => {
+    // Mark that user is actively interacting
+    isUserInteractingRef.current = true;
+
+    // Clear existing timeout
+    if (interactionTimeoutRef.current) {
+      clearTimeout(interactionTimeoutRef.current);
     }
 
-    setShowAddressModal(true);
+    // Reset interaction flag after user stops interacting
+    interactionTimeoutRef.current = setTimeout(() => {
+      isUserInteractingRef.current = false;
+    }, 300);
   };
 
-  const handleSaveAddress = () => {
-    if (!flatHouseNo.trim()) {
-      Alert.alert('Error', 'Please enter flat/house no/building name');
-      return;
-    }
+  useEffect(() => {
+    // Cleanup timeouts on unmount
+    return () => {
+      if (geocodeTimeoutRef.current) {
+        clearTimeout(geocodeTimeoutRef.current);
+      }
+      if (interactionTimeoutRef.current) {
+        clearTimeout(interactionTimeoutRef.current);
+      }
+    };
+  }, []);
 
-    if (!fullName.trim()) {
-      Alert.alert('Error', 'Please enter your full name');
-      return;
-    }
+  const openDrawer = () => {
+    setShowModal(true);
+    slideAnim.setValue(0);
+    Animated.timing(slideAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
 
-    if (!mobileNumber.trim() || mobileNumber.length !== 10) {
-      Alert.alert('Error', 'Please enter a valid 10-digit mobile number');
+  const closeDrawer = () => {
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowModal(false);
+    });
+  };
+
+  const saveAddress = async () => {
+    if (!flatHouseNo || !fullName || mobileNumber.length !== 10) {
+      Alert.alert('Error', 'Please fill all required fields');
       return;
     }
 
     if (!selectedLocation) {
+      Alert.alert('Error', 'Please select a location');
       return;
     }
+
+    // Check if there's a "Current Location" address that should be updated
+    const currentLocationAddress = addresses.find(
+      (addr) =>
+        addr.id.startsWith('current_') || addr.label === 'Current Location'
+    );
 
     const fullAddress = `${flatHouseNo}, ${selectedLocation.address}`;
 
-    if (isEditMode && params.id) {
-      // Update existing address
-      updateAddress(params.id, {
-        label: addressType,
-        address: fullAddress,
-      });
+    if (isLoggedIn) {
+      // User is logged in - sync with backend
+      // Ensure all required fields are present
+      const streetValue =
+        street.trim() || selectedLocation.street || selectedLocation.name || '';
+      const cityValue = city.trim() || selectedLocation.city || '';
+      const stateValue = selectedLocation.region || '';
+
+      if (!streetValue || !cityValue || !stateValue) {
+        Alert.alert(
+          'Incomplete Address',
+          'Please fill in street, city, and ensure state is available from the selected location.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      try {
+        const addressData = {
+          type: addressType.toLowerCase() as 'home' | 'work' | 'other',
+          label: addressType,
+          street: flatHouseNo ? `${flatHouseNo}, ${streetValue}` : streetValue,
+          apartment: flatHouseNo,
+          landmark: selectedLocation.district || '',
+          city: cityValue,
+          state: stateValue,
+          country: selectedLocation.country || 'India',
+          contactName: fullName,
+          contactPhone: mobileNumber,
+          coordinates: {
+            latitude: selectedLocation.latitude,
+            longitude: selectedLocation.longitude,
+          },
+          isDefault: currentLocationAddress?.isDefault || false,
+        };
+
+        // If current location address exists, we should update it on server
+        // But since it's a local address (id starts with current_), we'll create a new one
+        // and optionally remove the old one
+        if (
+          currentLocationAddress &&
+          currentLocationAddress.id.startsWith('current_')
+        ) {
+          // Create new address on server
+          await createAddress(addressData);
+          // Remove the old current location address
+          removeAddress(currentLocationAddress.id);
+        } else {
+          // Create new address
+          await createAddress(addressData);
+        }
+      } catch (error) {
+        console.error('Failed to save address:', error);
+        Alert.alert('Error', 'Failed to save address. Please try again.');
+        return;
+      }
     } else {
-      // Add new address
-      const newAddress: Address = {
-        id: Date.now().toString(),
-        label: addressType,
-        address: fullAddress,
-        isDefault: false,
-      };
-      addAddress(newAddress);
+      // User is not logged in - update current location or add new
+      if (currentLocationAddress) {
+        // Update the current location address
+        updateAddress(currentLocationAddress.id, {
+          label: addressType,
+          address: fullAddress,
+          street:
+            street.trim() ||
+            selectedLocation.street ||
+            selectedLocation.name ||
+            '',
+          city: city.trim() || selectedLocation.city || '',
+          state: selectedLocation.region || '',
+          country: selectedLocation.country || 'India',
+          contactName: fullName,
+          contactPhone: mobileNumber,
+          coordinates: {
+            latitude: selectedLocation.latitude,
+            longitude: selectedLocation.longitude,
+          },
+        });
+      } else {
+        // Add new address
+        addAddress({
+          id: Date.now().toString(),
+          label: addressType,
+          address: fullAddress,
+          street:
+            street.trim() ||
+            selectedLocation.street ||
+            selectedLocation.name ||
+            '',
+          city: city.trim() || selectedLocation.city || '',
+          state: selectedLocation.region || '',
+          country: selectedLocation.country || 'India',
+          contactName: fullName,
+          contactPhone: mobileNumber,
+          coordinates: {
+            latitude: selectedLocation.latitude,
+            longitude: selectedLocation.longitude,
+          },
+          isDefault: false,
+        });
+      }
     }
 
-    setShowAddressModal(false);
-    // Reset form
-    setFlatHouseNo('');
-    setFullName('');
-    setMobileNumber('');
-    setAlternatePhone('');
-    setAddressType('Home');
+    closeDrawer();
     router.back();
   };
 
+  const handleConfirmLocation = () => {
+    if (!isLoggedIn) {
+      // Update current location address if it exists
+      if (!selectedLocation) {
+        Alert.alert('Error', 'Please select a location');
+        return;
+      }
+
+      const currentLocationAddress = addresses.find(
+        (addr) =>
+          addr.id.startsWith('current_') || addr.label === 'Current Location'
+      );
+
+      if (currentLocationAddress) {
+        // Update the current location address with the selected location
+        updateAddress(currentLocationAddress.id, {
+          address: selectedLocation.address,
+          street: selectedLocation.street || selectedLocation.name || '',
+          city: selectedLocation.city || '',
+          state: selectedLocation.region || '',
+          pincode: selectedLocation.postalCode || '',
+          country: selectedLocation.country || 'India',
+          coordinates: {
+            latitude: selectedLocation.latitude,
+            longitude: selectedLocation.longitude,
+          },
+        });
+      } else {
+        // Create a new address from the selected location
+        const fullAddress = selectedLocation.address;
+        addAddress({
+          id: `current_${Date.now()}`,
+          label: 'Current Location',
+          address: fullAddress,
+          street: selectedLocation.street || selectedLocation.name || '',
+          city: selectedLocation.city || '',
+          state: selectedLocation.region || '',
+          pincode: selectedLocation.postalCode || '',
+          country: selectedLocation.country || 'India',
+          coordinates: {
+            latitude: selectedLocation.latitude,
+            longitude: selectedLocation.longitude,
+          },
+          isDefault: true,
+        });
+      }
+      router.push('/(tabs)/home');
+    } else {
+      openDrawer();
+    }
+  };
+
+  const translateY = slideAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [SCREEN_HEIGHT, 0],
+  });
+
+  const backdropOpacity = slideAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 0.5],
+  });
+
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <IconArrowLeft size={24} color='#333' />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {isEditMode ? 'Edit address' : 'Add new address'}
-        </Text>
-        <View style={styles.placeholder} />
-      </View>
-
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <IconSearch size={20} color='#666' style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder='Search by area, street name...'
-          placeholderTextColor='#999'
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          onSubmitEditing={handleSearch}
-          returnKeyType='search'
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setSearchQuery('')}
-            style={styles.clearButton}
-          >
-            <IconX size={20} color='#666' />
-          </TouchableOpacity>
-        )}
-      </View>
+      <Header title='Add new address' showBack />
 
       {/* Map */}
       <View style={styles.mapContainer}>
@@ -350,301 +466,285 @@ export default function AddAddressScreen() {
             ref={mapRef}
             style={styles.map}
             provider={PROVIDER_GOOGLE}
-            initialRegion={region}
             region={region}
-            onPress={handleMapPress}
-            showsUserLocation={true}
-            showsMyLocationButton={false}
-          >
-            {selectedLocation && Marker && (
-              <Marker
-                coordinate={{
-                  latitude: selectedLocation.latitude,
-                  longitude: selectedLocation.longitude,
-                }}
-                pinColor='#FF0000'
-              />
-            )}
-          </MapView>
+            onRegionChange={onRegionChange}
+            onRegionChangeComplete={onRegionChangeComplete}
+            showsUserLocation
+          />
         ) : (
-          <View style={[styles.map, styles.mapPlaceholder]}>
-            <IconMap size={64} color='#ccc' />
-            <Text style={styles.mapPlaceholderText}>
-              Map requires a development build
-            </Text>
-            <Text style={styles.mapPlaceholderSubtext}>
-              Please build the app to enable map functionality
-            </Text>
+          <View style={styles.mapPlaceholder}>
+            <IconMap size={60} color='#ccc' />
+            <Text>Build required for maps</Text>
           </View>
         )}
 
-        {/* Tooltip */}
-        {selectedLocation && (
-          <View style={styles.tooltip}>
-            <Text style={styles.tooltipText}>
-              Place pin on the exact location
-            </Text>
-          </View>
-        )}
+        {/* Search Bar - Absolutely positioned on top of map */}
+        <View style={styles.searchBox}>
+          <IconSearch size={20} color='#16a34a' />
+          <TextInput
+            style={styles.searchInput}
+            placeholder='Search area, street...'
+            placeholderTextColor='#999'
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={async () => {
+              try {
+                setIsLoading(true);
+                const geo = await Location.geocodeAsync(searchQuery);
+                if (geo.length) {
+                  isProgrammaticMoveRef.current = true;
+                  const { latitude, longitude } = geo[0];
+                  const r = {
+                    latitude,
+                    longitude,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                  };
 
-        {/* Use Current Location Button */}
+                  // Clear any pending geocode calls
+                  if (geocodeTimeoutRef.current) {
+                    clearTimeout(geocodeTimeoutRef.current);
+                  }
+
+                  // Store coordinates to trigger reverse geocoding in onRegionChangeComplete
+                  // onRegionChangeComplete will use the actual map center coordinates for accurate reverse geocoding
+                  pendingSearchCoordinatesRef.current = { latitude, longitude };
+
+                  // Animate map to the location
+                  // onRegionChangeComplete will be called when animation finishes and handle reverse geocoding
+                  mapRef.current?.animateToRegion(r, 800);
+                } else {
+                  setIsLoading(false);
+                  Alert.alert(
+                    'Not Found',
+                    'Location not found. Please try a different search.'
+                  );
+                }
+              } catch (error) {
+                console.error('Search geocoding error:', error);
+                Alert.alert(
+                  'Error',
+                  'Unable to find the location. Please try again.'
+                );
+                setIsLoading(false);
+                pendingSearchCoordinatesRef.current = null;
+                isProgrammaticMoveRef.current = false;
+              }
+            }}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <IconX size={18} color='#999' />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* FIXED CENTER PIN */}
+        <View pointerEvents='none' style={styles.centerPin}>
+          {/* Red shining ball on top */}
+          <View style={styles.pinBall}>
+            <View style={styles.pinBallShine} />
+          </View>
+          {/* Black line below */}
+          <View style={styles.pinLine} />
+        </View>
+
         <TouchableOpacity
-          style={styles.currentLocationButton}
+          style={styles.currentBtn}
           onPress={getCurrentLocation}
-          disabled={isLoading}
         >
-          <IconCurrentLocation size={20} color='#4CAF50' />
-          <Text style={styles.currentLocationText}>
-            Use my current location
-          </Text>
+          <IconCurrentLocation size={18} color='#4CAF50' />
+          <Text style={styles.currentText}>Use current location</Text>
         </TouchableOpacity>
 
         {isLoading && (
-          <View style={styles.loadingOverlay}>
+          <View style={styles.loader}>
             <ActivityIndicator size='large' color='#4CAF50' />
           </View>
         )}
       </View>
 
-      {/* Address Confirmation Section */}
-      <View style={styles.addressSection}>
-        <Text style={styles.deliverToText}>Deliver to</Text>
+      {/* Bottom */}
+      <View
+        style={[styles.bottom, { paddingBottom: Math.max(insets.bottom, 16) }]}
+      >
         {selectedLocation ? (
           <View style={styles.addressCard}>
-            <IconUser size={20} color='#666' style={styles.personIcon} />
-            <View style={styles.addressContent}>
-              <Text style={styles.addressLabel}>
-                {selectedLocation.label || 'Selected Location'}
-              </Text>
+            <IconMapPinFilled
+              size={16}
+              color='#FF0000'
+              style={styles.addressIcon}
+            />
+            <View style={styles.addressDetails}>
+              {selectedLocation.street && (
+                <Text style={styles.addressMainText}>
+                  {selectedLocation.street}
+                </Text>
+              )}
               <Text style={styles.addressText}>{selectedLocation.address}</Text>
+              <View style={styles.addressMeta}>
+                {selectedLocation.district && (
+                  <Text style={styles.addressMetaText}>
+                    {selectedLocation.district}
+                  </Text>
+                )}
+                {selectedLocation.city && selectedLocation.district && (
+                  <Text style={styles.addressMetaText}> • </Text>
+                )}
+                {selectedLocation.city && (
+                  <Text style={styles.addressMetaText}>
+                    {selectedLocation.city}
+                  </Text>
+                )}
+                {selectedLocation.postalCode && (
+                  <Text style={styles.addressMetaText}>
+                    {' • '}
+                    {selectedLocation.postalCode}
+                  </Text>
+                )}
+              </View>
             </View>
           </View>
-        ) : (
-          <View style={styles.noAddressCard}>
-            <Text style={styles.noAddressText}>
-              Select a location on the map or search for an address
-            </Text>
-          </View>
-        )}
+        ) : null}
 
-        <TouchableOpacity
-          style={[
-            styles.addButton,
-            !selectedLocation && styles.addButtonDisabled,
-          ]}
-          onPress={handleAddAddressDetails}
-          disabled={!selectedLocation || isLoading}
-        >
-          <Text style={styles.addButtonText}>
-            {isEditMode ? 'Edit address details' : 'Add address details'}
+        <TouchableOpacity style={styles.addBtn} onPress={handleConfirmLocation}>
+          <Text style={styles.addText}>
+            {isLoggedIn ? 'Add address details' : 'Confirm'}
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Address Details Modal */}
+      {/* Drawer Modal */}
       <Modal
-        visible={showAddressModal}
+        visible={showModal}
         transparent={true}
-        animationType='slide'
-        onRequestClose={() => setShowAddressModal(false)}
+        animationType='none'
+        onRequestClose={closeDrawer}
       >
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity
-            style={styles.modalOverlayTouchable}
-            activeOpacity={1}
-            onPress={() => setShowAddressModal(false)}
-          />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.modalContent}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 40}
+        <View style={styles.modalContainer}>
+          <Animated.View
+            style={[styles.backdrop, { opacity: backdropOpacity }]}
           >
-            {/* Modal Header - Sticky */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalHeaderTitle}>Deliver to</Text>
+            <TouchableOpacity
+              style={styles.backdropTouch}
+              activeOpacity={1}
+              onPress={closeDrawer}
+            />
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              styles.drawer,
+              {
+                transform: [{ translateY }],
+              },
+            ]}
+          >
+            <View style={styles.closeButtonContainer}>
               <TouchableOpacity
-                onPress={() => setShowAddressModal(false)}
+                onPress={closeDrawer}
                 style={styles.closeButton}
               >
-                <IconX size={24} color='#333' />
+                <IconX size={24} color='#FFFFFF' />
               </TouchableOpacity>
             </View>
-
-            <ScrollView
-              ref={scrollViewRef}
-              style={styles.modalScrollView}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps='handled'
-              contentContainerStyle={styles.scrollContent}
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+              style={styles.drawerContent}
             >
-              {/* Selected Address Card */}
-              {selectedLocation && (
-                <View style={styles.selectedAddressCard}>
-                  <IconMapPin
-                    size={20}
-                    color='#666'
-                    style={styles.locationIcon}
-                  />
-                  <View style={styles.selectedAddressContent}>
-                    <Text style={styles.selectedAddressLabel}>
-                      {selectedLocation.address.split(' - ')[0] ||
-                        'Selected Location'}
-                    </Text>
-                    <Text style={styles.selectedAddressText}>
-                      {selectedLocation.address}
-                    </Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Form Fields */}
-              <View style={styles.formContainer}>
-                <Text style={styles.inputLabel}>
-                  Flat / House no. / Building name{' '}
-                  <Text style={styles.required}>*</Text>
+              <ScrollView
+                contentContainerStyle={{
+                  paddingBottom: Math.max(insets.bottom, 24),
+                }}
+                keyboardShouldPersistTaps='handled'
+                keyboardDismissMode='interactive'
+                showsVerticalScrollIndicator={true}
+              >
+                <Text style={[styles.label, { marginTop: 0 }]}>
+                  Flat / House *
                 </Text>
                 <TextInput
-                  style={styles.formInput}
-                  placeholder='Flat / House no. / Building name'
-                  placeholderTextColor='#999'
+                  style={styles.input}
                   value={flatHouseNo}
                   onChangeText={setFlatHouseNo}
-                  onFocus={() => {
-                    setTimeout(() => {
-                      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-                    }, 100);
-                  }}
+                  placeholder='Enter flat/house number'
+                  placeholderTextColor='#999'
+                  returnKeyType='next'
                 />
 
-                <Text style={styles.inputLabel}>
-                  Enter your full name <Text style={styles.required}>*</Text>
-                </Text>
+                <Text style={styles.label}>Street *</Text>
                 <TextInput
-                  style={styles.formInput}
-                  placeholder='Enter your full name'
+                  style={styles.input}
+                  value={street}
+                  onChangeText={setStreet}
+                  placeholder='Enter street address'
                   placeholderTextColor='#999'
+                  returnKeyType='next'
+                />
+
+                <Text style={styles.label}>City *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={city}
+                  onChangeText={setCity}
+                  placeholder='Enter city'
+                  placeholderTextColor='#999'
+                  returnKeyType='next'
+                />
+
+                <Text style={styles.label}>Full Name *</Text>
+                <TextInput
+                  style={styles.input}
                   value={fullName}
                   onChangeText={setFullName}
-                  onFocus={() => {
-                    setTimeout(() => {
-                      scrollViewRef.current?.scrollTo({
-                        y: 100,
-                        animated: true,
-                      });
-                    }, 100);
-                  }}
+                  placeholder='Enter your full name'
+                  placeholderTextColor='#999'
+                  returnKeyType='next'
                 />
 
-                <Text style={styles.inputLabel}>
-                  10-digit mobile number <Text style={styles.required}>*</Text>
-                </Text>
+                <Text style={styles.label}>Mobile *</Text>
                 <TextInput
-                  style={styles.formInput}
-                  placeholder='10-digit mobile number'
-                  placeholderTextColor='#999'
+                  style={styles.input}
+                  keyboardType='number-pad'
+                  maxLength={10}
                   value={mobileNumber}
-                  onChangeText={(text) => {
-                    // Only allow digits and limit to 10
-                    const digits = text.replace(/[^0-9]/g, '');
-                    if (digits.length <= 10) {
-                      setMobileNumber(digits);
-                    }
-                  }}
-                  keyboardType='phone-pad'
-                  maxLength={10}
-                  onFocus={() => {
-                    setTimeout(() => {
-                      scrollViewRef.current?.scrollTo({
-                        y: 200,
-                        animated: true,
-                      });
-                    }, 100);
-                  }}
-                />
-
-                <Text style={styles.inputLabel}>
-                  Alternate phone number (Optional)
-                </Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder='Alternate phone number (Optional)'
+                  onChangeText={(t) =>
+                    setMobileNumber(t.replace(/[^0-9]/g, ''))
+                  }
+                  placeholder='Enter 10-digit mobile number'
                   placeholderTextColor='#999'
-                  value={alternatePhone}
-                  onChangeText={(text) => {
-                    const digits = text.replace(/[^0-9]/g, '');
-                    if (digits.length <= 10) {
-                      setAlternatePhone(digits);
-                    }
-                  }}
-                  keyboardType='phone-pad'
-                  maxLength={10}
-                  onFocus={() => {
-                    setTimeout(() => {
-                      scrollViewRef.current?.scrollTo({
-                        y: 300,
-                        animated: true,
-                      });
-                    }, 100);
-                  }}
+                  returnKeyType='done'
                 />
 
-                {/* Type of Address */}
-                <Text style={styles.inputLabel}>Type of address</Text>
-                <View style={styles.addressTypeContainer}>
-                  <TouchableOpacity
-                    style={[
-                      styles.addressTypeButton,
-                      addressType === 'Home' && styles.addressTypeButtonActive,
-                    ]}
-                    onPress={() => setAddressType('Home')}
-                  >
-                    <IconHome
-                      size={20}
-                      color={addressType === 'Home' ? '#4CAF50' : '#666'}
-                    />
-                    <Text
+                <View style={styles.typeRow}>
+                  {['Home', 'Work'].map((t) => (
+                    <TouchableOpacity
+                      key={t}
                       style={[
-                        styles.addressTypeText,
-                        addressType === 'Home' && styles.addressTypeTextActive,
+                        styles.typeBtn,
+                        addressType === t && styles.typeActive,
                       ]}
+                      onPress={() => setAddressType(t as any)}
                     >
-                      Home
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.addressTypeButton,
-                      addressType === 'Work' && styles.addressTypeButtonActive,
-                    ]}
-                    onPress={() => setAddressType('Work')}
-                  >
-                    <IconBuilding
-                      size={20}
-                      color={addressType === 'Work' ? '#4CAF50' : '#666'}
-                    />
-                    <Text
-                      style={[
-                        styles.addressTypeText,
-                        addressType === 'Work' && styles.addressTypeTextActive,
-                      ]}
-                    >
-                      Work
-                    </Text>
-                  </TouchableOpacity>
+                      <Text
+                        style={[
+                          styles.typeBtnText,
+                          addressType === t && styles.typeBtnTextActive,
+                        ]}
+                      >
+                        {t}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-              </View>
 
-              {/* Save Button */}
-              <TouchableOpacity
-                style={styles.saveAddressButton}
-                onPress={handleSaveAddress}
-              >
-                <Text style={styles.saveAddressButtonText}>
-                  {isEditMode ? 'Update address' : 'Save address'}
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </KeyboardAvoidingView>
+                <TouchableOpacity style={styles.saveBtn} onPress={saveAddress}>
+                  <Text style={styles.saveText}>Save address</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </Animated.View>
         </View>
       </Modal>
     </View>
@@ -652,324 +752,260 @@ export default function AddAddressScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  placeholder: {
-    width: 40,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#333',
-  },
-  clearButton: {
-    marginLeft: 8,
-  },
-  mapContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  map: {
-    flex: 1,
-  },
-  mapPlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-  },
-  mapPlaceholderText: {
-    marginTop: 16,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#666',
-  },
-  mapPlaceholderSubtext: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    paddingHorizontal: 32,
-  },
-  tooltip: {
+  container: { flex: 1, backgroundColor: '#fff' },
+
+  searchBox: {
     position: 'absolute',
-    top: 20,
-    left: '50%',
-    transform: [{ translateX: -100 }],
-    backgroundColor: '#000',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 4,
-  },
-  tooltipText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  currentLocationButton: {
-    position: 'absolute',
-    bottom: 20,
+    top: 16,
+    left: 16,
     right: 16,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
+    height: Platform.select({
+      ios: 48,
+      android: 42,
+      default: 44,
+    }),
+    borderRadius: 12,
+    zIndex: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 1,
+    borderWidth: 0.5,
+    borderColor: '#E0E0E0',
   },
-  currentLocationText: {
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4CAF50',
+  searchInput: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 15,
+    color: '#1a1a1a',
   },
-  loadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+  mapContainer: { flex: 1 },
+  map: { flex: 1 },
+  mapPlaceholder: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  addressSection: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 24,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+  centerPin: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginLeft: -1,
+    marginTop: -40,
   },
-  deliverToText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
+  pinBall: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FF3B30',
+    borderWidth: 3,
+    borderColor: '#FF3B30',
+    shadowColor: '#FF3B30',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+    elevation: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: -1,
+    zIndex: 1000,
+  },
+  pinBallShine: {
+    width: 6,
+    height: 6,
+    borderRadius: 4,
+    backgroundColor: '#fff',
+    position: 'absolute',
+    top: 0,
+    left: 3,
+  },
+  pinLine: {
+    width: 2,
+    height: 40,
+    backgroundColor: '#000',
+  },
+
+  currentBtn: {
+    position: 'absolute',
+    bottom: 20,
+    right: 16,
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    padding: 10,
+    borderRadius: 8,
+    elevation: 4,
+  },
+  currentText: { marginLeft: 6, color: '#4CAF50' },
+
+  loader: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.6)',
+  },
+
+  bottom: {
+    padding: 16,
+    paddingBottom: 16,
+    borderTopWidth: 1,
+    borderColor: '#eee',
+    backgroundColor: '#F8F9FA',
   },
   addressCard: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f9f9f9',
+    marginBottom: 12,
     padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  noAddressCard: {
-    backgroundColor: '#f9f9f9',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  personIcon: {
-    marginRight: 12,
-  },
-  addressContent: {
-    flex: 1,
-  },
-  addressLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  addressText: {
-    fontSize: 13,
-    color: '#666',
-    lineHeight: 18,
-  },
-  noAddressText: {
-    fontSize: 13,
-    color: '#999',
-    textAlign: 'center',
-  },
-  addButton: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  addButtonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  addButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalOverlayTouchable: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '85%',
-    minHeight: '60%',
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    borderWidth: 0.2,
+    borderColor: '#E0E0E0',
   },
-  modalScrollView: {
-    flexGrow: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: 150,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  modalHeaderTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  selectedAddressCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#f9f9f9',
-    marginHorizontal: 20,
-    marginTop: 16,
-    padding: 12,
-    borderRadius: 8,
-  },
-  locationIcon: {
+  addressIcon: {
     marginRight: 12,
     marginTop: 2,
   },
-  selectedAddressContent: {
+  addressDetails: {
     flex: 1,
   },
-  selectedAddressLabel: {
+  addressMainText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
+    color: '#1a1a1a',
     marginBottom: 4,
   },
-  selectedAddressText: {
-    fontSize: 13,
+  addressText: {
+    fontSize: 12,
     color: '#666',
-    lineHeight: 18,
+    marginBottom: 6,
+    lineHeight: 20,
   },
-  formContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  required: {
-    color: '#FF0000',
-  },
-  formInput: {
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#333',
-    backgroundColor: '#fff',
-  },
-  addressTypeContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-    marginBottom: 20,
-  },
-  addressTypeButton: {
-    flex: 1,
+  addressMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    flexWrap: 'wrap',
+  },
+  addressMetaText: {
+    fontSize: 10,
+    color: '#999',
+  },
+  addBtn: {
+    backgroundColor: '#4CAF50',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  addText: { color: '#fff', fontWeight: '600' },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000',
+  },
+  backdropTouch: {
+    flex: 1,
+  },
+  drawer: {
+    backgroundColor: '#FBFBFB',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    paddingTop: 20,
+    position: 'relative',
+    flex: 1,
+  },
+  closeButtonContainer: {
+    position: 'absolute',
+    top: -46,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  closeButton: {
+    padding: 8,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#5B5B5B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  drawerContent: {
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    flex: 1,
+  },
+
+  label: {
+    marginTop: 16,
+    marginBottom: 8,
+    fontWeight: '600',
+    fontSize: 14,
+    color: '#1a1a1a',
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    borderColor: '#E0E0E0',
     backgroundColor: '#fff',
-    gap: 8,
-  },
-  addressTypeButtonActive: {
-    borderColor: '#4CAF50',
-    backgroundColor: '#E8F5E9',
-  },
-  addressTypeText: {
     fontSize: 16,
+    color: '#1a1a1a',
+  },
+
+  typeRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  typeBtn: {
+    flex: 1,
+    padding: 14,
+    borderWidth: 1,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderColor: '#E0E0E0',
+  },
+  typeActive: {
+    backgroundColor: '#E8F5E9',
+    borderColor: '#4CAF50',
+  },
+  typeBtnText: {
+    fontSize: 15,
     fontWeight: '500',
     color: '#666',
   },
-  addressTypeTextActive: {
+  typeBtnTextActive: {
     color: '#4CAF50',
     fontWeight: '600',
   },
-  saveAddressButton: {
-    backgroundColor: '#007AFF',
-    marginHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 32,
+
+  saveBtn: {
+    backgroundColor: '#4CAF50',
+    marginTop: 24,
     paddingVertical: 16,
-    borderRadius: 8,
+    paddingHorizontal: 24,
+    borderRadius: 12,
     alignItems: 'center',
   },
-  saveAddressButtonText: {
+  saveText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',

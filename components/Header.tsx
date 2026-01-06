@@ -1,6 +1,12 @@
 import { IconArrowLeft } from '@tabler/icons-react-native';
 import { useRouter } from 'expo-router';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface HeaderProps {
@@ -43,6 +49,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
+    paddingBottom: 10,
     gap: 16,
   },
   title: {
@@ -53,11 +60,13 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     padding: 8,
-    width: 40,
+    width: Platform.OS === 'android' ? 35 : 40,
     alignItems: 'center',
     borderWidth: 0.5,
     borderColor: '#e0e0e0',
     borderRadius: 36,
     backgroundColor: '#fff',
+    aspectRatio: 1,
+    justifyContent: 'center',
   },
 });

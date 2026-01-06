@@ -9,31 +9,40 @@ import {
 } from '@tabler/icons-react-native';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLocationStore } from '../../store/locationStore';
 
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+  const selectedStore = useLocationStore((state) => state.selectedStore);
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: '#479100',
         tabBarInactiveTintColor: '#666',
-        tabBarStyle: {
-          backgroundColor: '#fff',
-          borderTopWidth: 1,
-          borderTopColor: '#E0E0E0',
-          paddingTop: 4,
-          ...Platform.select({
-            ios: {
-              shadowColor: '#E0E0E0',
-              shadowOffset: { width: 0, height: -2 },
-              shadowOpacity: 0.2,
-              shadowRadius: 1,
-            },
-            android: {
-              elevation: 8,
-            },
-          }),
-        },
+        tabBarStyle: selectedStore
+          ? {
+              backgroundColor: '#fff',
+              borderTopWidth: 1,
+              borderTopColor: '#E0E0E0',
+              ...Platform.select({
+                ios: {
+                  shadowColor: '#E0E0E0',
+                  shadowOffset: { width: 0, height: -2 },
+                  shadowOpacity: 0.2,
+                  shadowRadius: 1,
+                },
+                android: {
+                  elevation: 8,
+                  paddingBottom: Math.max(insets.bottom, 8),
+                  paddingTop: 4,
+                  height: 56 + Math.max(insets.bottom, 8),
+                },
+              }),
+            }
+          : { display: 'none' },
         tabBarLabelStyle: {
           fontSize: 11,
         },

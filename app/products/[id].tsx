@@ -1,32 +1,32 @@
 import {
-    IconArrowLeft,
-    IconHeart,
-    IconMinus,
-    IconPlus,
-    IconShare,
-    IconShoppingCart,
+  IconArrowLeft,
+  IconHeart,
+  IconMinus,
+  IconPlus,
+  IconShare,
+  IconShoppingCart,
 } from '@tabler/icons-react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Dimensions,
-    Image,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import Animated, {
-    Extrapolation,
-    FadeInDown,
-    interpolate,
-    useAnimatedScrollHandler,
-    useAnimatedStyle,
-    useSharedValue
+  Extrapolation,
+  FadeInDown,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -66,11 +66,13 @@ export default function ProductDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  
+
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(
+    null
+  );
   const { addItem, updateQuantity, getItemQuantity } = useCartStore();
 
   const scrollY = useSharedValue(0);
@@ -95,7 +97,10 @@ export default function ProductDetailsScreen() {
         if (productData.variants && productData.variants.length > 0) {
           setSelectedVariant(productData.variants[0]);
         } else {
-          setSelectedVariant({ size: productData.size, unit: productData.unit });
+          setSelectedVariant({
+            size: productData.size,
+            unit: productData.unit,
+          });
         }
       } else {
         setError('Product not found');
@@ -108,20 +113,26 @@ export default function ProductDetailsScreen() {
     }
   };
 
-  const quantity = product && selectedVariant 
-    ? getItemQuantity(product._id, selectedVariant) 
-    : 0;
-  
+  const quantity =
+    product && selectedVariant
+      ? getItemQuantity(product._id, selectedVariant)
+      : 0;
+
   // Get available variants or use default size/unit
-  const availableVariants = product?.variants && product.variants.length > 0 
-    ? product.variants 
-    : product 
+  const availableVariants =
+    product?.variants && product.variants.length > 0
+      ? product.variants
+      : product
       ? [{ size: product.size, unit: product.unit }]
       : [];
 
   // Get pricing for selected variant or fallback to product-level pricing
   const getVariantPrice = (variant: ProductVariant | null) => {
-    if (variant && variant.sellingPrice !== undefined && variant.sellingPrice > 0) {
+    if (
+      variant &&
+      variant.sellingPrice !== undefined &&
+      variant.sellingPrice > 0
+    ) {
       return {
         sellingPrice: variant.sellingPrice,
         originalPrice: variant.originalPrice || 0,
@@ -130,9 +141,20 @@ export default function ProductDetailsScreen() {
     }
     // Fallback to product-level pricing
     return {
-      sellingPrice: typeof product?.sellingPrice === 'number' && !isNaN(product.sellingPrice) ? product.sellingPrice : 0,
-      originalPrice: typeof product?.originalPrice === 'number' && !isNaN(product.originalPrice) ? product.originalPrice : 0,
-      discount: typeof product?.discount === 'number' && !isNaN(product.discount) ? product.discount : 0,
+      sellingPrice:
+        typeof product?.sellingPrice === 'number' &&
+        !isNaN(product.sellingPrice)
+          ? product.sellingPrice
+          : 0,
+      originalPrice:
+        typeof product?.originalPrice === 'number' &&
+        !isNaN(product.originalPrice)
+          ? product.originalPrice
+          : 0,
+      discount:
+        typeof product?.discount === 'number' && !isNaN(product.discount)
+          ? product.discount
+          : 0,
     };
   };
 
@@ -151,7 +173,7 @@ export default function ProductDetailsScreen() {
     );
     return {
       opacity,
-      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+      backgroundColor: 'rgba(251, 251, 251, 0.95)',
       borderBottomWidth: 1,
       borderBottomColor: 'rgba(0,0,0,0.05)',
     };
@@ -176,7 +198,7 @@ export default function ProductDetailsScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#16a34a" />
+        <ActivityIndicator size='large' color='#16a34a' />
         <Text style={styles.loadingText}>Loading product...</Text>
       </View>
     );
@@ -189,7 +211,10 @@ export default function ProductDetailsScreen() {
         <TouchableOpacity onPress={loadProduct} style={styles.retryButton}>
           <Text style={styles.retryText}>Try Again</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButtonError}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButtonError}
+        >
           <Text style={styles.backButtonText}>Go Back</Text>
         </TouchableOpacity>
       </View>
@@ -226,26 +251,32 @@ export default function ProductDetailsScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      
+      <StatusBar barStyle='dark-content' />
+
       {/* Animated Header Background */}
-      <Animated.View style={[styles.headerBackground, { height: insets.top + 50 }, headerStyle]} />
+      <Animated.View
+        style={[
+          styles.headerBackground,
+          { height: insets.top + 50 },
+          headerStyle,
+        ]}
+      />
 
       {/* Floating Header Buttons */}
       <View style={[styles.headerButtons, { top: insets.top }]}>
-        <TouchableOpacity 
-          style={styles.roundButton} 
+        <TouchableOpacity
+          style={styles.roundButton}
           onPress={() => router.back()}
         >
-          <IconArrowLeft size={24} color="#1a1a1a" />
+          <IconArrowLeft size={24} color='#1a1a1a' />
         </TouchableOpacity>
-        
+
         <View style={styles.rightButtons}>
           <TouchableOpacity style={styles.roundButton}>
-            <IconShare size={22} color="#1a1a1a" />
+            <IconShare size={22} color='#1a1a1a' />
           </TouchableOpacity>
           <TouchableOpacity style={[styles.roundButton, { marginLeft: 10 }]}>
-            <IconHeart size={22} color="#1a1a1a" />
+            <IconHeart size={22} color='#1a1a1a' />
           </TouchableOpacity>
         </View>
       </View>
@@ -263,7 +294,9 @@ export default function ProductDetailsScreen() {
               <Image source={{ uri: product.images[0] }} style={styles.image} />
             ) : (
               <View style={styles.placeholder}>
-                <Text style={styles.placeholderText}>{product.name.charAt(0)}</Text>
+                <Text style={styles.placeholderText}>
+                  {product.name.charAt(0)}
+                </Text>
               </View>
             )}
             <LinearGradient
@@ -276,11 +309,13 @@ export default function ProductDetailsScreen() {
         {/* Content Sheet */}
         <View style={styles.contentSheet}>
           <View style={styles.dragHandle} />
-          
+
           <Animated.View entering={FadeInDown.delay(100).duration(500)}>
             <View style={styles.titleRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.category}>{product.category?.name || 'Fresh'}</Text>
+                <Text style={styles.category}>
+                  {product.category?.name || 'Fresh'}
+                </Text>
                 <Text style={styles.name}>{product.name}</Text>
                 {selectedVariant && (
                   <Text style={styles.unit}>
@@ -291,7 +326,9 @@ export default function ProductDetailsScreen() {
               <View style={styles.priceBlock}>
                 <Text style={styles.price}>₹{sellingPrice.toFixed(0)}</Text>
                 {discount > 0 && originalPrice > 0 && (
-                  <Text style={styles.originalPrice}>₹{originalPrice.toFixed(0)}</Text>
+                  <Text style={styles.originalPrice}>
+                    ₹{originalPrice.toFixed(0)}
+                  </Text>
                 )}
               </View>
             </View>
@@ -310,7 +347,8 @@ export default function ProductDetailsScreen() {
                 <View style={styles.variantContainer}>
                   {availableVariants.map((variant, index) => {
                     const variantPricing = getVariantPrice(variant);
-                    const isSelected = selectedVariant?.size === variant.size &&
+                    const isSelected =
+                      selectedVariant?.size === variant.size &&
                       selectedVariant?.unit === variant.unit;
                     return (
                       <TouchableOpacity
@@ -349,7 +387,8 @@ export default function ProductDetailsScreen() {
 
             <Text style={styles.sectionTitle}>Description</Text>
             <Text style={styles.description}>
-              {product.description || `Fresh ${product.name} sourced directly from local farmers. High quality and organic.`}
+              {product.description ||
+                `Fresh ${product.name} sourced directly from local farmers. High quality and organic.`}
             </Text>
 
             <View style={styles.divider} />
@@ -357,16 +396,25 @@ export default function ProductDetailsScreen() {
             <View style={styles.quantityRow}>
               <Text style={styles.sectionTitle}>Quantity</Text>
               <View style={styles.quantityControl}>
-                <TouchableOpacity 
-                  style={[styles.qtyBtn, quantity === 0 && styles.qtyBtnDisabled]} 
+                <TouchableOpacity
+                  style={[
+                    styles.qtyBtn,
+                    quantity === 0 && styles.qtyBtnDisabled,
+                  ]}
                   onPress={handleDecreaseQuantity}
                   disabled={quantity === 0}
                 >
-                  <IconMinus size={20} color={quantity === 0 ? '#ccc' : '#1a1a1a'} />
+                  <IconMinus
+                    size={20}
+                    color={quantity === 0 ? '#ccc' : '#1a1a1a'}
+                  />
                 </TouchableOpacity>
                 <Text style={styles.qtyText}>{quantity}</Text>
-                <TouchableOpacity style={styles.qtyBtn} onPress={handleIncreaseQuantity}>
-                  <IconPlus size={20} color="#1a1a1a" />
+                <TouchableOpacity
+                  style={styles.qtyBtn}
+                  onPress={handleIncreaseQuantity}
+                >
+                  <IconPlus size={20} color='#1a1a1a' />
                 </TouchableOpacity>
               </View>
             </View>
@@ -375,21 +423,33 @@ export default function ProductDetailsScreen() {
       </Animated.ScrollView>
 
       {/* Bottom Action Bar */}
-      <BlurView intensity={80} tint="light" style={[styles.bottomBar, { paddingBottom: insets.bottom || 20 }]}>
+      <BlurView
+        intensity={80}
+        tint='light'
+        style={[styles.bottomBar, { paddingBottom: insets.bottom || 20 }]}
+      >
         <View style={styles.bottomBarContent}>
           <View style={styles.totalContainer}>
             <Text style={styles.totalLabel}>Total Price</Text>
-            <Text style={styles.totalPrice}>₹{(sellingPrice * (quantity || 1)).toFixed(0)}</Text>
+            <Text style={styles.totalPrice}>
+              ₹{(sellingPrice * (quantity || 1)).toFixed(0)}
+            </Text>
           </View>
-          
+
           {quantity > 0 ? (
-            <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/cart')}>
-              <IconShoppingCart size={20} color="#fff" />
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => router.push('/cart')}
+            >
+              <IconShoppingCart size={20} color='#fff' />
               <Text style={styles.actionButtonText}>View Cart</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.actionButton} onPress={handleAddToCart}>
-              <IconShoppingCart size={20} color="#fff" />
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={handleAddToCart}
+            >
+              <IconShoppingCart size={20} color='#fff' />
               <Text style={styles.actionButtonText}>Add to Cart</Text>
             </TouchableOpacity>
           )}
@@ -402,13 +462,13 @@ export default function ProductDetailsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FBFBFB',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#FBFBFB',
   },
   loadingText: {
     marginTop: 12,
@@ -420,6 +480,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    backgroundColor: '#FBFBFB',
   },
   errorText: {
     fontSize: 18,
@@ -478,7 +539,7 @@ const styles = StyleSheet.create({
   imageContainer: {
     height: IMG_HEIGHT,
     width: width,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#FBFBFB',
     overflow: 'hidden',
   },
   image: {

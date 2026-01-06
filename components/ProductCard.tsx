@@ -1,5 +1,7 @@
 import {
   IconChevronDown,
+  IconHeart,
+  IconHeartFilled,
   IconMinus,
   IconPlus,
   IconX,
@@ -11,6 +13,7 @@ import {
   Dimensions,
   Image,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -23,6 +26,8 @@ import AnimatedReanimated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useCartStore } from '../store/cartStore';
+import { useUserStore } from '../store/userStore';
+import { useWishlistStore } from '../store/wishlistStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PADDING = 20; // 16px padding on each side
@@ -30,12 +35,14 @@ const GAP = 14;
 const CARD_WIDTH = (SCREEN_WIDTH - PADDING - 2 * GAP) / 3;
 
 interface ProductVariant {
+  sku?: string;
   size: number;
   unit: string;
   originalPrice?: number;
   sellingPrice?: number;
   discount?: number;
   stock?: number;
+  isAvailable?: boolean;
   isOutOfStock?: boolean;
 }
 
@@ -53,6 +60,9 @@ interface Product {
   description?: string;
   isActive: boolean;
   isFeatured: boolean;
+  stock?: number;
+  isAvailable?: boolean;
+  isOutOfStock?: boolean;
 }
 
 interface ProductCardProps {
@@ -196,13 +206,62 @@ const formatTotalSize = (
   return totalQuantity > 0 ? `${totalQuantity}` : '';
 };
 
+// Common Button Style Bases
+const addButtonBase = {
+  paddingHorizontal: 10,
+  paddingVertical: 0,
+  minWidth: 60,
+  minHeight: Platform.OS === 'android' ? 26 : 30,
+  alignItems: 'center' as const,
+  justifyContent: 'center' as const,
+  borderRadius: 9,
+  backgroundColor: '#C5FF8D20',
+};
+
+const addButtonTextBase = {
+  fontSize: 12,
+  fontWeight: '700' as const,
+  color: '#568627',
+};
+
+const qtyButtonBase = {
+  width: 30,
+  height: Platform.OS === 'android' ? 26 : 30,
+  borderRadius: 6,
+  justifyContent: 'center' as const,
+  alignItems: 'center' as const,
+  padding: 4,
+};
+
+const qtyTextBase = {
+  fontSize: 12,
+  color: '#568627',
+  fontWeight: '700' as const,
+  textAlign: 'center' as const,
+  paddingHorizontal: Platform.OS === 'android' ? 2 : 6,
+};
+
+const qtyContainerBase = {
+  flexDirection: 'row' as const,
+  alignItems: 'center' as const,
+  backgroundColor: '#C5FF8D20',
+};
+
 export default function ProductCard({ product }: ProductCardProps) {
   const router = useRouter();
   // Subscribe to items array to trigger re-render when cart changes
   const { items, addItem, updateQuantity, getItemQuantity, getVariantKey } =
     useCartStore();
+  const {
+    addItem: addToWishlist,
+    removeItem: removeFromWishlist,
+    isInWishlist,
+  } = useWishlistStore();
+  const isLoggedIn = useUserStore((state) => state.isLoggedIn);
   const [showVariantDrawer, setShowVariantDrawer] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
+
+  const isWishlisted = isInWishlist(product._id);
 
   // Get available variants - only show variants that have stock or pricing
   const availableVariants =
@@ -211,7 +270,8 @@ export default function ProductCard({ product }: ProductCardProps) {
           // Show variant if it has stock OR has pricing (even if out of stock)
           const hasStock = (v.stock || 0) > 0;
           const hasPricing = (v.sellingPrice || 0) > 0;
-          return hasStock || hasPricing;
+          const isAvailable = v.isAvailable !== false; // Default to true if not specified
+          return (hasStock || hasPricing) && isAvailable;
         })
       : [];
 
@@ -341,6 +401,18 @@ export default function ProductCard({ product }: ProductCardProps) {
     }
   };
 
+  const handleToggleWishlist = () => {
+    if (!isLoggedIn) {
+      router.push('/login');
+      return;
+    }
+    if (isWishlisted) {
+      removeFromWishlist(product._id);
+    } else {
+      addToWishlist(product);
+    }
+  };
+
   const translateY = slideAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [SCREEN_HEIGHT, 0],
@@ -366,6 +438,19 @@ export default function ProductCard({ product }: ProductCardProps) {
               </Text>
             </View>
           )}
+
+          {/* WISHLIST ICON */}
+          <Pressable
+            onPress={handleToggleWishlist}
+            style={styles.wishlistButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            {isWishlisted ? (
+              <IconHeartFilled size={20} color='#FF5722' />
+            ) : (
+              <IconHeart size={20} color='#D1D5D7' />
+            )}
+          </Pressable>
         </View>
 
         {/* ADD BUTTON / QUANTITY OVERLAY */}
@@ -410,7 +495,12 @@ export default function ProductCard({ product }: ProductCardProps) {
           <Text style={styles.weightText}>
             {defaultVariant.size} {defaultVariant.unit}
           </Text>
-          {hasMultipleVariants && <IconChevronDown size={16} color='#2F500E' />}
+          {hasMultipleVariants && (
+            <IconChevronDown
+              size={Platform.OS === 'android' ? 14 : 16}
+              color='#114E99'
+            />
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -621,20 +711,16 @@ const styles = StyleSheet.create({
   },
   imageButtonContainer: {
     position: 'relative',
-    height: 150,
   },
   imageContainer: {
-    height: 150,
-    backgroundColor: '#fff',
+    height: 'auto',
+    backgroundColor: '#F8F9FA',
     borderRadius: 20,
     // overflow: 'hidden',
-    borderWidth: 0.5,
-    borderColor: '#EAEAEA',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 0.3,
+    borderColor: '#E6ECF1',
+    aspectRatio: 4 / 4.5,
+    position: 'relative',
   },
   image: {
     width: '100%',
@@ -652,6 +738,16 @@ const styles = StyleSheet.create({
     color: '#2E7D32',
     fontWeight: 'bold',
   },
+  wishlistButton: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 
   actionOverlay: {
     position: 'absolute',
@@ -668,43 +764,22 @@ const styles = StyleSheet.create({
     transform: [{ translateY: 20 }],
     // gap: 4, // Moved to qtyContainer for better layout control with animations
   },
+  // Overlay-specific styles (using common base)
   qtyContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#C5FF8D20',
+    ...qtyContainerBase,
   },
   addButtonInner: {
-    paddingHorizontal: 10,
-    paddingVertical: 0,
-    minWidth: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
+    ...addButtonBase,
     height: '100%',
-    minHeight: 30, // Ensure touch target
-    backgroundColor: '#C5FF8D20',
-    borderRadius: 9,
   },
   addButtonTextOverlay: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#568627',
+    ...addButtonTextBase,
   },
   qtyBtnOverlay: {
-    minWidth: 30,
-    minHeight: 30,
-    width: 30,
-    height: 30,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 4,
+    ...qtyButtonBase,
   },
   qtyTextOverlay: {
-    fontSize: 12,
-    color: '#568627',
-    fontWeight: '700',
-    minWidth: 20,
-    textAlign: 'center',
+    ...qtyTextBase,
   },
   info: {
     paddingTop: 12,
@@ -716,15 +791,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: '#D4EFB950',
-    borderRadius: 8,
+    backgroundColor: '#F3F8FF',
+    borderRadius: 6,
     gap: 4,
+    height: Platform.OS === 'android' ? 20 : 22,
   },
   weightText: {
-    fontSize: 10,
+    fontSize: Platform.OS === 'android' ? 9 : 10,
     fontWeight: '500',
-    color: '#2F500E',
+    color: '#114E99',
   },
   name: {
     fontSize: 14,
@@ -773,15 +848,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   drawer: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FBFBFB',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '85%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 10,
+    shadowRadius: 4,
     paddingTop: 20,
     position: 'relative',
   },
@@ -789,8 +863,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    marginBottom: 20,
+    paddingHorizontal: 32,
+    marginBottom: 4,
   },
   drawerTitleContainer: {
     flex: 1,
@@ -812,13 +886,11 @@ const styles = StyleSheet.create({
   drawerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1a1a1a',
     marginBottom: 4,
   },
   drawerTotal: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#4CAF50',
   },
   variantsList: {
     paddingHorizontal: 24,
@@ -831,14 +903,14 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: '#fff',
     borderRadius: 16,
-    marginBottom: 12,
-    borderWidth: 0.5,
-    borderColor: '#F0F0F0',
+    marginBottom: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 0.5 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    borderWidth: 0.2,
+    borderColor: '#E0E0E0',
+    height: 100,
   },
   variantImageContainer: {
     width: 60,
@@ -874,6 +946,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 8,
+    height: '100%',
   },
   variantPrice: {
     fontSize: 18,
@@ -889,46 +962,24 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   variantAddButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 0,
-    minWidth: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 30,
+    ...addButtonBase,
     borderWidth: 1,
     borderColor: '#568627',
-    borderRadius: 9,
-    backgroundColor: '#C5FF8D20',
   },
   variantAddButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#568627',
+    ...addButtonTextBase,
   },
   variantQtyContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    ...qtyContainerBase,
     borderWidth: 1,
     borderColor: '#568627',
     borderRadius: 10,
-    backgroundColor: '#C5FF8D20',
   },
   variantQtyBtn: {
-    minWidth: 30,
-    minHeight: 30,
-    width: 30,
-    height: 30,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 4,
+    ...qtyButtonBase,
   },
   variantQtyText: {
-    fontSize: 12,
-    color: '#568627',
-    fontWeight: '700',
-    minWidth: 20,
-    textAlign: 'center',
+    ...qtyTextBase,
     paddingHorizontal: 6,
   },
   variantItemOutOfStock: {

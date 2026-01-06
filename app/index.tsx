@@ -2,12 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useLocationStore } from '../store/locationStore';
 import { useUserStore } from '../store/userStore';
 
 export default function Index() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
   const initialize = useUserStore((state) => state.initialize);
+  const initializeLocation = useLocationStore((state) => state.initializeLocation);
 
   useEffect(() => {
     initializeApp();
@@ -17,6 +19,9 @@ export default function Index() {
     try {
       // Initialize user store (load tokens and profile from storage)
       await initialize();
+
+      // Initialize location (get current location or load saved addresses)
+      await initializeLocation();
 
       // Check onboarding status
       const onboardingCompleted = await AsyncStorage.getItem(

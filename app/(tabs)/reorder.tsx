@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
   Image,
 } from 'react-native';
 import Header from '../../components/Header';
+import LoginModal from '../../components/LoginModal';
 import { useUserStore } from '../../store/userStore';
 import { getProductById } from '../../data/dummyData';
 
@@ -38,6 +40,7 @@ const reorderableOrders = [
 export default function ReorderTab() {
   const router = useRouter();
   const isLoggedIn = useUserStore((state) => state.isLoggedIn);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   const handleReorder = (orderId: string) => {
     // Navigate to order details or directly add to cart
@@ -57,13 +60,19 @@ export default function ReorderTab() {
             </Text>
             <TouchableOpacity
               style={styles.loginButton}
-              onPress={() => router.push('/login')}
+              onPress={() => setShowLoginModal(true)}
               activeOpacity={0.8}
             >
               <Text style={styles.loginButtonText}>Sign In</Text>
             </TouchableOpacity>
           </View>
         </View>
+        <LoginModal
+          visible={showLoginModal}
+          onClose={() => setShowLoginModal(false)}
+          title='Login Required'
+          message='Please login to access your reorder history'
+        />
       </View>
     );
   }
