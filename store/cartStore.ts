@@ -3,7 +3,8 @@ import { cartAPI } from '../lib/api';
 import { useLocationStore } from './locationStore';
 
 export interface ProductVariant {
-  sku?: string; // SKU from backend (e.g., "RICE-1KG" or "1_kg")
+  sku?: string; // Keep for backward compatibility
+  variantSku?: string; // ⚠️ CRITICAL: Always use variantSku from StoreProduct API response
   size: number;
   unit: string;
   originalPrice?: number;
@@ -38,8 +39,23 @@ export interface CartItem extends Product {
   selectedVariant?: ProductVariant; // Selected variant for this cart item
 }
 
+export interface CartIssue {
+  productId: string;
+  productName?: string | null; // Product name if available from backend
+  productImages?: string[]; // Product images
+  sellingPrice?: number;
+  originalPrice?: number;
+  size?: number;
+  unit?: string;
+  variantSku: string;
+  reason: 'OUT_OF_STOCK' | 'QUANTITY_REDUCED';
+  requestedQuantity: number;
+  availableQuantity: number;
+}
+
 interface CartState {
   items: CartItem[];
+  issues: CartIssue[];
   isLoading: boolean;
   isSyncing: boolean;
   addItem: (product: Product, variant?: ProductVariant) => Promise<void>;
@@ -81,6 +97,8 @@ const convertApiCartItemToCartItems = (apiItem: any): CartItem[] => {
     unit: variant.unit,
     quantity: variant.quantity,
     selectedVariant: {
+      variantSku: variant.variantSku || variant.sku, // ⚠️ CRITICAL: Use variantSku from API
+      sku: variant.sku || variant.variantSku, // Keep for backward compatibility
       size: variant.size,
       unit: variant.unit,
       sellingPrice: variant.price,
@@ -90,6 +108,7 @@ const convertApiCartItemToCartItems = (apiItem: any): CartItem[] => {
 
 export const useCartStore = create<CartState>((set, get) => ({
   items: [],
+  issues: [],
   isLoading: false,
   isSyncing: false,
   
@@ -148,10 +167,16 @@ export const useCartStore = create<CartState>((set, get) => ({
           continue;
         }
 
+        // ⚠️ CRITICAL: variantSku MUST come from the variant (from API response)
+        // Never construct variantSku - always use variantSku from StoreProduct
+        const variantSku = item.selectedVariant?.variantSku || item.selectedVariant?.sku;
+        if (!variantSku) {
+          console.error('Missing variantSku for item:', item._id, item.selectedVariant);
+          throw new Error('variantSku is required. Please ensure product variants include variantSku from API.');
+        }
+        const variantKey = get().getVariantKey(item._id, item.selectedVariant);
+
         try {
-          // Use SKU from variant if available, otherwise construct from size and unit
-          const variantSku = item.selectedVariant?.sku || `${size}_${unit}`;
-          
           // Check if item already exists in backend cart
           const existingBackendItem = backendCartItems.find((backendItem: any) => {
             const backendProductId = backendItem.productId?._id || backendItem.productId;
@@ -165,9 +190,12 @@ export const useCartStore = create<CartState>((set, get) => ({
             if (!selectedStore?._id) {
               throw new Error('Store not selected');
             }
-            // Use SKU from variant if available
-            const sku = item.selectedVariant?.sku;
-            await cartAPI.updateItem(item._id, size, unit, item.quantity, selectedStore._id, sku);
+            // ⚠️ CRITICAL: Use variantSku from variant (from API response)
+            const variantSku = item.selectedVariant?.variantSku || item.selectedVariant?.sku;
+            if (!variantSku) {
+              throw new Error('variantSku is required. Please ensure product variants include variantSku from API.');
+            }
+            await cartAPI.updateItem(item._id, size, unit, item.quantity, selectedStore._id, variantSku);
           } else {
             // Item doesn't exist - use addItem with exact quantity
             // Note: addItem increments, so we add the full quantity
@@ -175,12 +203,32 @@ export const useCartStore = create<CartState>((set, get) => ({
             if (!selectedStore?._id) {
               throw new Error('Store not selected');
             }
-            // Use SKU from variant if available
-            const sku = item.selectedVariant?.sku;
-            await cartAPI.addItem(item._id, size, unit, item.quantity, price, selectedStore._id, sku);
+            // ⚠️ CRITICAL: Use variantSku from variant (from API response)
+            const variantSku = item.selectedVariant?.variantSku || item.selectedVariant?.sku;
+            if (!variantSku) {
+              throw new Error('variantSku is required. Please ensure product variants include variantSku from API.');
+            }
+            await cartAPI.addItem(item._id, size, unit, item.quantity, price, selectedStore._id, variantSku);
           }
-        } catch (error) {
-          console.error(`Failed to sync item ${item._id} to backend:`, error);
+        } catch (error: any) {
+          // Check if error is due to item not being available at the store
+          const errorMessage = error?.message || '';
+          if (
+            errorMessage.includes('not available') ||
+            errorMessage.includes('not available for this product') ||
+            errorMessage.includes('Variant with SKU') ||
+            errorMessage.includes('out of stock')
+          ) {
+            // Item is not available - remove it from local cart silently
+            console.warn(`Item ${item._id} (${variantSku}) is not available at store, removing from local cart`);
+            const updatedItems = get().items.filter(
+              (cartItem) => get().getVariantKey(cartItem._id, cartItem.selectedVariant) !== variantKey
+            );
+            set({ items: updatedItems });
+          } else {
+            // Other errors - log but continue
+            console.error(`Failed to sync item ${item._id} to backend:`, error);
+          }
           // Continue with other items even if one fails
         }
       }
@@ -215,7 +263,26 @@ export const useCartStore = create<CartState>((set, get) => ({
       if (response.success && response.data?.cart) {
         // Convert each cart item (which may have multiple variants) to separate CartItems
         const cartItems = response.data.cart.items.flatMap(convertApiCartItemToCartItems);
-        set({ items: cartItems, isLoading: false });
+        // Store issues from the cart response
+        const issues: CartIssue[] = (response.data.cart.issues || []).map((issue: any) => {
+          const productId = issue.productId?._id || issue.productId || '';
+          // Get product details from enriched issue
+          const product = issue.product || issue.productId;
+          return {
+            productId,
+            productName: product?.name || null,
+            productImages: product?.images || [],
+            sellingPrice: product?.sellingPrice || 0,
+            originalPrice: product?.originalPrice || 0,
+            size: product?.size || 0,
+            unit: product?.unit || '',
+            variantSku: issue.variantSku || '',
+            reason: issue.reason || 'OUT_OF_STOCK',
+            requestedQuantity: issue.requestedQuantity || 0,
+            availableQuantity: issue.availableQuantity || 0,
+          };
+        });
+        set({ items: cartItems, issues, isLoading: false });
         
         // If backend cart is empty but we had local items and preserveLocalIfEmpty is true, keep local items
         if (preserveLocalIfEmpty && cartItems.length === 0 && localItemsBeforeLoad.length > 0) {
@@ -226,9 +293,9 @@ export const useCartStore = create<CartState>((set, get) => ({
         // If no cart found and we should preserve local, keep local items
         if (preserveLocalIfEmpty && localItemsBeforeLoad.length > 0) {
           console.warn('No cart found on backend, preserving local cart items');
-          set({ items: localItemsBeforeLoad, isLoading: false });
+          set({ items: localItemsBeforeLoad, issues: [], isLoading: false });
         } else {
-          set({ isLoading: false });
+          set({ items: [], issues: [], isLoading: false });
         }
       }
     } catch (error) {
@@ -236,9 +303,9 @@ export const useCartStore = create<CartState>((set, get) => ({
       // If error and we should preserve local, keep local items
       if (preserveLocalIfEmpty && localItemsBeforeLoad.length > 0) {
         console.warn('Failed to load cart, preserving local cart items');
-        set({ items: localItemsBeforeLoad, isLoading: false });
+        set({ items: localItemsBeforeLoad, issues: [], isLoading: false });
       } else {
-        set({ isLoading: false });
+        set({ items: [], issues: [], isLoading: false });
         // Keep local cart if API fails
       }
     }
@@ -335,14 +402,17 @@ export const useCartStore = create<CartState>((set, get) => ({
           throw new Error(`Invalid variant size: ${selectedVariant.size}`);
         }
         
-        // Use SKU from variant if available, otherwise it will be constructed in API
-        const sku = selectedVariant.sku;
+        // ⚠️ CRITICAL: Use variantSku from variant (from API response)
+        const variantSku = selectedVariant.variantSku || selectedVariant.sku;
+        if (!variantSku) {
+          throw new Error('variantSku is required. Please ensure product variants include variantSku from API.');
+        }
         
         const selectedStore = useLocationStore.getState().selectedStore;
         if (!selectedStore?._id) {
           throw new Error('Store not selected');
         }
-        await cartAPI.addItem(product._id, size, unit, quantity, price, selectedStore._id, sku);
+        await cartAPI.addItem(product._id, size, unit, quantity, price, selectedStore._id, variantSku);
         set({ isSyncing: false });
       } catch (error) {
         console.error('Failed to sync cart to API:', error);
@@ -394,10 +464,13 @@ export const useCartStore = create<CartState>((set, get) => ({
           throw new Error('Store not selected');
         }
 
-        // Use SKU from variant if available
-        const sku = variantToUse.sku;
+        // ⚠️ CRITICAL: Use variantSku from variant (from API response)
+        const variantSku = variantToUse.variantSku || variantToUse.sku;
+        if (!variantSku) {
+          throw new Error('variantSku is required. Please ensure product variants include variantSku from API.');
+        }
         
-        await cartAPI.removeItem(productId, size, unit, selectedStore._id, sku);
+        await cartAPI.removeItem(productId, size, unit, selectedStore._id, variantSku);
         set({ isSyncing: false });
       } catch (error) {
         console.error('Failed to sync cart to API:', error);
@@ -460,8 +533,11 @@ export const useCartStore = create<CartState>((set, get) => ({
           throw new Error(`Invalid variant size: ${variantToUse.size}`);
         }
         
-        // Use SKU from variant if available
-        const sku = variantToUse.sku;
+        // ⚠️ CRITICAL: Use variantSku from variant (from API response)
+        const variantSku = variantToUse.variantSku || variantToUse.sku;
+        if (!variantSku) {
+          throw new Error('variantSku is required. Please ensure product variants include variantSku from API.');
+        }
         
         const selectedStore = useLocationStore.getState().selectedStore;
         if (!selectedStore?._id) {
@@ -470,10 +546,10 @@ export const useCartStore = create<CartState>((set, get) => ({
         
         if (quantity <= 0) {
           // Remove variant if quantity is 0
-          await cartAPI.removeItem(productId, size, unit, selectedStore._id, sku);
+          await cartAPI.removeItem(productId, size, unit, selectedStore._id, variantSku);
         } else {
           // Update variant quantity
-          await cartAPI.updateItem(productId, size, unit, quantity, selectedStore._id, sku);
+          await cartAPI.updateItem(productId, size, unit, quantity, selectedStore._id, variantSku);
         }
         set({ isSyncing: false });
       } catch (error) {
@@ -487,7 +563,7 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   clearCart: async () => {
     // Update local state immediately
-    set({ items: [] });
+    set({ items: [], issues: [] });
 
     // Sync to API if logged in
     const isLoggedIn = await checkIfLoggedIn();

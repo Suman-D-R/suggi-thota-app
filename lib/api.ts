@@ -55,6 +55,26 @@ export const productAPI = {
     const response = await fetch(`${API_BASE_URL}/products/${id}`);
     return await response.json();
   },
+
+  // Search products by location
+  searchByLocation: async (params: { 
+    q: string; 
+    lat: number; 
+    lng: number; 
+    limit?: number; 
+    maxDistance?: number 
+  }) => {
+    const queryParams = new URLSearchParams();
+
+    queryParams.append('q', params.q);
+    queryParams.append('lat', params.lat.toString());
+    queryParams.append('lng', params.lng.toString());
+    if (params.limit) queryParams.append('limit', params.limit.toString());
+    if (params.maxDistance) queryParams.append('maxDistance', params.maxDistance.toString());
+
+    const response = await fetch(`${API_BASE_URL}/products/search?${queryParams}`);
+    return await response.json();
+  },
 };
 
 // Category API
@@ -76,6 +96,11 @@ export const categoryAPI = {
 
   getById: async (id: string) => {
     const response = await fetch(`${API_BASE_URL}/categories/${id}`);
+    return await response.json();
+  },
+
+  getWithProducts: async (storeId: string) => {
+    const response = await fetch(`${API_BASE_URL}/categories/with-products?storeId=${storeId}`);
     return await response.json();
   },
 };
@@ -248,7 +273,7 @@ export const cartAPI = {
     return data;
   },
 
-  addItem: async (productId: string, size: number, unit: string, quantity: number = 1, price: number, storeId?: string, sku?: string) => {
+  addItem: async (productId: string, size: number, unit: string, quantity: number = 1, price: number, storeId?: string, variantSku?: string) => {
     const headers = await getAuthHeaders();
     
     // Get storeId from location store if not provided
@@ -262,8 +287,12 @@ export const cartAPI = {
       throw new Error('Store ID is required. Please select a store first.');
     }
     
-    // Use SKU if provided, otherwise construct from size and unit
-    const variantSku = sku || `${size}_${unit}`;
+    // ⚠️ CRITICAL: variantSku MUST be provided from the product API response
+    // Never construct variantSku - always use variantSku from StoreProduct
+    if (!variantSku) {
+      throw new Error('variantSku is required. Please use variantSku from the product API response.');
+    }
+    
     const body = { productId, size, unit, quantity, price, storeId: finalStoreId, variantSku };
     
     // Debug logging
@@ -278,14 +307,29 @@ export const cartAPI = {
     const data = await response.json();
     
     if (!response.ok) {
-      console.error('Cart API - addItem error:', data);
-      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+      const errorMessage = data.message || `HTTP error! status: ${response.status}`;
+      // Check if it's a "not available" or "insufficient stock" error - these are handled gracefully
+      const isNotAvailableError = 
+        errorMessage.includes('not available') ||
+        errorMessage.includes('not available for this product') ||
+        errorMessage.includes('Variant with SKU') ||
+        errorMessage.includes('out of stock') ||
+        errorMessage.includes('Insufficient stock') ||
+        errorMessage.includes('insufficient stock');
+      
+      if (isNotAvailableError) {
+        // Log as warning instead of error since it's expected and handled
+        console.warn('Cart API - addItem: Item not available or insufficient stock:', errorMessage);
+      } else {
+        console.error('Cart API - addItem error:', data);
+      }
+      throw new Error(errorMessage);
     }
     
     return data;
   },
 
-  updateItem: async (productId: string, size: number, unit: string, quantity: number, storeId?: string, sku?: string) => {
+  updateItem: async (productId: string, size: number, unit: string, quantity: number, storeId?: string, variantSku?: string) => {
     const headers = await getAuthHeaders();
     
     // Get storeId from location store if not provided
@@ -299,8 +343,12 @@ export const cartAPI = {
       throw new Error('Store ID is required. Please select a store first.');
     }
     
-    // Use SKU if provided, otherwise construct from size and unit
-    const variantSku = sku || `${size}_${unit}`;
+    // ⚠️ CRITICAL: variantSku MUST be provided from the product API response
+    // Never construct variantSku - always use variantSku from StoreProduct
+    if (!variantSku) {
+      throw new Error('variantSku is required. Please use variantSku from the product API response.');
+    }
+    
     const body = { productId, size, unit, quantity, storeId: finalStoreId, variantSku };
     
     // Debug logging
@@ -316,14 +364,29 @@ export const cartAPI = {
     const data = await response.json();
     
     if (!response.ok) {
-      console.error('Cart API - updateItem error:', data);
-      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+      const errorMessage = data.message || `HTTP error! status: ${response.status}`;
+      // Check if it's a "not available" or "insufficient stock" error - these are handled gracefully
+      const isNotAvailableError = 
+        errorMessage.includes('not available') ||
+        errorMessage.includes('not available for this product') ||
+        errorMessage.includes('Variant with SKU') ||
+        errorMessage.includes('out of stock') ||
+        errorMessage.includes('Insufficient stock') ||
+        errorMessage.includes('insufficient stock');
+      
+      if (isNotAvailableError) {
+        // Log as warning instead of error since it's expected and handled
+        console.warn('Cart API - updateItem: Item not available or insufficient stock:', errorMessage);
+      } else {
+        console.error('Cart API - updateItem error:', data);
+      }
+      throw new Error(errorMessage);
     }
     
     return data;
   },
 
-  removeItem: async (productId: string, size?: number, unit?: string, storeId?: string, sku?: string) => {
+  removeItem: async (productId: string, size?: number, unit?: string, storeId?: string, variantSku?: string) => {
     const headers = await getAuthHeaders();
     
     // Get storeId from location store if not provided
@@ -337,14 +400,10 @@ export const cartAPI = {
       throw new Error('Store ID is required. Please select a store first.');
     }
     
-    // Construct variantSku from size/unit or use provided sku
-    let variantSku: string | undefined;
-    if (sku) {
-      variantSku = sku;
-    } else if (size !== undefined && unit) {
-      variantSku = `${size}_${unit}`;
-    } else {
-      throw new Error('Variant SKU is required. Please provide size and unit, or SKU.');
+    // ⚠️ CRITICAL: variantSku MUST be provided from the product API response
+    // Never construct variantSku - always use variantSku from StoreProduct
+    if (!variantSku) {
+      throw new Error('variantSku is required. Please use variantSku from the product API response.');
     }
     
     const body = { productId, storeId: finalStoreId, variantSku };
@@ -443,6 +502,22 @@ export const orderAPI = {
   getOrderById: async (orderId: string) => {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/orders/${orderId}`, {
+      headers,
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return data;
+  },
+
+  reorder: async (orderId: string) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/orders/${orderId}/reorder`, {
+      method: 'POST',
       headers,
     });
     

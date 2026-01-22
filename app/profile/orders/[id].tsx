@@ -1,26 +1,42 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useCallback } from 'react';
 import Header from '../../../components/Header';
 import { orderAPI } from '../../../lib/api';
 import { useUserStore } from '../../../store/userStore';
 
+// --- MODERN CONSTANTS (Matching ProductCard.tsx theme) ---
+const COLORS = {
+  primary: '#059669', // Modern Emerald
+  primarySoft: '#ECFDF5',
+  textDark: '#111827',
+  textGray: '#6B7280',
+  textLight: '#9CA3AF',
+  danger: '#EF4444',
+  bg: '#FFFFFF',
+  cardBg: '#FFFFFF',
+  border: '#F3F4F6',
+};
+
+// --- Interfaces (Kept same as original) ---
 interface OrderItem {
-  product: string | {
-    _id: string;
-    name: string;
-    images?: string[];
-  };
+  product:
+    | string
+    | {
+        _id: string;
+        name: string;
+        images?: string[];
+      };
   quantity: number;
   price: number;
   total: number;
@@ -58,9 +74,110 @@ interface OrderDetails {
   createdAt: string;
   estimatedDeliveryTime?: string;
   actualDeliveryTime?: string;
+  cancelReason?: string;
+  cancelledAt?: string;
   deliveryInstructions?: string;
   orderNotes?: string;
 }
+
+// --- Modern Utility Components ---
+
+const StatusTimeline = ({ status }: { status: string }) => {
+  // All status steps in order
+  const steps = [
+    'pending',
+    'confirmed',
+    'preparing',
+    'ready',
+    'out_for_delivery',
+    'delivered',
+  ];
+
+  // Map current status to step index
+  const getStepIndex = (s: string) => {
+    const lower = s.toLowerCase();
+    const index = steps.findIndex((step) => step === lower);
+    return index !== -1 ? index : 0;
+  };
+
+  const currentStep = getStepIndex(status);
+  const isCancelled = status.toLowerCase() === 'cancelled';
+  const isRefunded = status.toLowerCase() === 'refunded';
+
+  if (isCancelled) {
+    return (
+      <View style={styles.cancelledBanner}>
+        <Ionicons name='alert-circle' size={20} color={COLORS.danger} />
+        <Text style={styles.cancelledText}>Order Cancelled</Text>
+      </View>
+    );
+  }
+
+  if (isRefunded) {
+    return (
+      <View style={styles.refundedBanner}>
+        <Ionicons name='refresh-circle' size={20} color={COLORS.primary} />
+        <Text style={styles.refundedText}>Order Refunded</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.timelineContainer}>
+      {steps.map((step, index) => {
+        const isActive = index <= currentStep;
+        const isLast = index === steps.length - 1;
+        return (
+          <View key={step} style={styles.timelineStep}>
+            <View style={styles.timelineStepContent}>
+              {/* Dot */}
+              <View style={styles.timelineDotContainer}>
+                <View
+                  style={[
+                    styles.timelineDot,
+                    isActive ? styles.timelineDotActive : {},
+                  ]}
+                >
+                  {isActive && (
+                    <Ionicons name='checkmark' size={10} color='#fff' />
+                  )}
+                </View>
+                {/* Vertical Line connector - always show between checkpoints */}
+                {!isLast && (
+                  <View
+                    style={[
+                      styles.timelineLine,
+                      isActive && index < currentStep
+                        ? styles.timelineLineActive
+                        : {},
+                    ]}
+                  />
+                )}
+              </View>
+              {/* Label */}
+              <Text
+                style={[
+                  styles.timelineLabel,
+                  isActive ? styles.timelineLabelActive : {},
+                ]}
+              >
+                {step.replace(/_/g, ' ')}
+              </Text>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+};
+
+const DashedLine = () => (
+  <View style={styles.dashedLineContainer}>
+    {Array.from({ length: 20 }).map((_, i) => (
+      <View key={i} style={styles.dashItem} />
+    ))}
+  </View>
+);
 
 export default function OrderDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -70,24 +187,22 @@ export default function OrderDetailsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // --- Logic (Kept same as original) ---
   const loadOrder = useCallback(async () => {
     if (!id || !isLoggedIn) {
       setIsLoading(false);
       return;
     }
-
     try {
       setIsLoading(true);
       setError(null);
       const response = await orderAPI.getOrderById(id);
-      
       if (response.success && response.data?.order) {
         setOrder(response.data.order);
       } else {
         setError('Order not found');
       }
     } catch (err: any) {
-      console.error('Failed to load order:', err);
       setError(err.message || 'Failed to load order details');
       setOrder(null);
     } finally {
@@ -101,114 +216,56 @@ export default function OrderDetailsScreen() {
     }, [loadOrder])
   );
 
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'delivered':
-        return '#4CAF50';
-      case 'cancelled':
-        return '#FF5722';
-      case 'pending':
-      case 'confirmed':
-      case 'preparing':
-      case 'ready':
-        return '#FF9800';
-      case 'out_for_delivery':
-        return '#2196F3';
-      case 'refunded':
-        return '#9E9E9E';
-      default:
-        return '#666';
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'delivered':
-        return 'checkmark-circle';
-      case 'cancelled':
-        return 'close-circle';
-      case 'pending':
-      case 'confirmed':
-      case 'preparing':
-      case 'ready':
-        return 'time';
-      case 'out_for_delivery':
-        return 'car';
-      case 'refunded':
-        return 'refresh-circle';
-      default:
-        return 'ellipse';
-    }
-  };
-
-  const formatStatus = (status: string) => {
-    return status
-      .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  };
-
+  // --- Helpers ---
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-IN', {
+    return new Date(dateString).toLocaleDateString('en-IN', {
       day: 'numeric',
       month: 'short',
-      year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
     });
   };
 
-  const formatPaymentMethod = (method: string) => {
-    switch (method.toLowerCase()) {
-      case 'cod':
-        return 'Cash on Delivery';
-      case 'online':
-        return 'Online Payment';
-      case 'wallet':
-        return 'Wallet';
-      default:
-        return method;
-    }
-  };
-
   const getAddressString = (address: OrderAddress | string): string => {
-    if (typeof address === 'string') {
-      return address;
-    }
+    if (typeof address === 'string') return address;
     if (!address) return '';
-    
-    const parts = [];
-    if (address.apartment) parts.push(address.apartment);
-    if (address.street) parts.push(address.street);
-    if (address.city) parts.push(address.city);
-    if (address.state) parts.push(address.state);
-    if (address.pincode) parts.push(address.pincode);
-    
+    const parts = [
+      address.apartment,
+      address.street,
+      address.city,
+      address.pincode,
+    ].filter(Boolean);
     return parts.join(', ') || 'Address not available';
   };
 
-  const getProductName = (item: OrderItem): string => {
-    if (typeof item.product === 'object' && item.product?.name) {
-      return item.product.name;
-    }
-    return 'Product';
-  };
+  const getProductName = (item: OrderItem) =>
+    typeof item.product === 'object' ? item.product?.name : 'Product';
+  const getProductImage = (item: OrderItem) =>
+    typeof item.product === 'object' && item.product?.images?.[0]
+      ? item.product.images[0]
+      : null;
 
-  const getProductImage = (item: OrderItem): string | null => {
-    if (typeof item.product === 'object' && item.product?.images && item.product.images.length > 0) {
-      return item.product.images[0];
-    }
-    return null;
-  };
+  // --- Render States ---
 
-  if (!isLoggedIn) {
+  if (!isLoggedIn || error || !order) {
     return (
       <View style={styles.container}>
-        <Header showBack={true} />
+        <Header
+          showBack={true}
+          title='Order Details'
+          backgroundColor={COLORS.bg}
+        />
         <View style={styles.errorContainer}>
-          <Ionicons name='log-in-outline' size={64} color='#ccc' />
-          <Text style={styles.errorText}>Please login to view order details</Text>
+          <Ionicons
+            name={!isLoggedIn ? 'log-in-outline' : 'alert-circle-outline'}
+            size={64}
+            color={COLORS.textLight}
+          />
+          <Text style={styles.errorText}>
+            {!isLoggedIn
+              ? 'Please login to view order details'
+              : error || 'Order not found'}
+          </Text>
         </View>
       </View>
     );
@@ -217,22 +274,14 @@ export default function OrderDetailsScreen() {
   if (isLoading) {
     return (
       <View style={styles.container}>
-        <Header showBack={true} />
+        <Header
+          showBack={true}
+          title='Order Details'
+          backgroundColor={COLORS.bg}
+        />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4CAF50" />
+          <ActivityIndicator size='large' color={COLORS.primary} />
           <Text style={styles.loadingText}>Loading order details...</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (error || !order) {
-    return (
-      <View style={styles.container}>
-        <Header showBack={true} />
-        <View style={styles.errorContainer}>
-          <Ionicons name='receipt-outline' size={64} color='#ccc' />
-          <Text style={styles.errorText}>{error || 'Order not found'}</Text>
         </View>
       </View>
     );
@@ -240,199 +289,191 @@ export default function OrderDetailsScreen() {
 
   return (
     <View style={styles.container}>
-      <Header showBack={true} />
+      <Header
+        showBack={true}
+        title={`Order #${order.orderNumber || order._id.slice(-6)}`}
+        backgroundColor={COLORS.bg}
+      />
+
       <ScrollView
         style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Order Header */}
-        <View style={styles.orderHeaderCard}>
-          <View style={styles.orderHeaderTop}>
-            <View style={styles.orderHeaderLeft}>
-              <Ionicons
-                name={getStatusIcon(order.status) as any}
-                size={28}
-                color={getStatusColor(order.status)}
-              />
-              <View style={styles.orderInfo}>
-                <Text style={styles.orderId}>Order #{order.orderNumber || order._id.slice(-6)}</Text>
-                <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
-              </View>
-            </View>
-            <View
-              style={[
-                styles.statusBadge,
-                {
-                  backgroundColor: getStatusColor(order.status) + '20',
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusText,
-                  { color: getStatusColor(order.status) },
-                ]}
-              >
-                {formatStatus(order.status)}
-              </Text>
-            </View>
+        {/* 1. Status Section */}
+        <View style={styles.sectionCard}>
+          <View style={styles.headerRow}>
+            <Text style={styles.sectionTitle}>Order Status</Text>
+            <Text style={styles.dateText}>{formatDate(order.createdAt)}</Text>
           </View>
-          {order.estimatedDeliveryTime && (
-            <View style={styles.trackingContainer}>
-              <Ionicons name='time-outline' size={18} color='#666' />
-              <Text style={styles.trackingLabel}>Estimated Delivery:</Text>
-              <Text style={styles.trackingNumber}>{formatDate(order.estimatedDeliveryTime)}</Text>
-            </View>
-          )}
+          <StatusTimeline status={order.status} />
+
+          {order.estimatedDeliveryTime &&
+            order.status !== 'delivered' &&
+            order.status !== 'cancelled' && (
+              <View style={styles.etaContainer}>
+                <Ionicons
+                  name='time-outline'
+                  size={16}
+                  color={COLORS.primary}
+                />
+                <Text style={styles.etaText}>
+                  ETA:{' '}
+                  {new Date(order.estimatedDeliveryTime).toLocaleTimeString(
+                    [],
+                    { hour: '2-digit', minute: '2-digit' }
+                  )}
+                </Text>
+              </View>
+            )}
         </View>
 
-        {/* Order Items */}
+        {/* 2. Items List */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Order Items</Text>
-          <View style={styles.itemsContainer}>
+          <Text style={styles.sectionHeaderLabel}>Items</Text>
+          <View style={styles.itemsWrapper}>
             {order.items.map((item, index) => {
-              const productName = getProductName(item);
-              const productImage = getProductImage(item);
-              const unit = item.unit ? `${item.size || ''} ${item.unit}`.trim() : '';
-
+              const imageUrl = getProductImage(item);
               return (
-                <View key={index} style={styles.orderItem}>
-                  <View style={styles.itemImageContainer}>
-                    {productImage ? (
+                <View
+                  key={index}
+                  style={[
+                    styles.itemRow,
+                    index !== order.items.length - 1 && styles.itemBorder,
+                  ]}
+                >
+                  <View style={styles.imageWrapper}>
+                    {imageUrl ? (
                       <Image
-                        source={{ uri: productImage }}
+                        source={{ uri: imageUrl }}
                         style={styles.itemImage}
                       />
                     ) : (
-                      <View style={styles.itemPlaceholder}>
-                        <Text style={styles.itemPlaceholderText}>
-                          {productName.charAt(0).toUpperCase()}
+                      <View style={styles.placeholderImage}>
+                        <Text style={styles.placeholderText}>
+                          {getProductName(item).charAt(0)}
                         </Text>
                       </View>
                     )}
-                  </View>
-                  <View style={styles.itemDetails}>
-                    <Text style={styles.itemName}>{productName}</Text>
-                    {unit && <Text style={styles.itemUnit}>{unit}</Text>}
-                    <View style={styles.itemPriceRow}>
-                      <Text style={styles.itemPrice}>
-                        ₹{item.price.toFixed(2)} × {item.quantity}
-                      </Text>
+                    <View style={styles.quantityBadge}>
+                      <Text style={styles.quantityText}>{item.quantity}x</Text>
                     </View>
                   </View>
-                  <Text style={styles.itemTotal}>
-                    ₹{item.total.toFixed(2)}
-                  </Text>
+
+                  <View style={styles.itemInfo}>
+                    <Text style={styles.itemName} numberOfLines={2}>
+                      {getProductName(item)}
+                    </Text>
+                    {item.unit && (
+                      <Text style={styles.itemVariant}>
+                        {item.size} {item.unit}
+                      </Text>
+                    )}
+                  </View>
+
+                  <Text style={styles.itemPrice}>₹{item.total.toFixed(2)}</Text>
                 </View>
               );
             })}
           </View>
         </View>
 
-        {/* Delivery Address */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Delivery Address</Text>
-          <View style={styles.addressCard}>
-            <View style={styles.addressHeader}>
-              <Ionicons name='location' size={20} color='#4CAF50' />
-              <Text style={styles.addressLabel}>
-                {typeof order.deliveryAddress === 'object' 
-                  ? (order.deliveryAddress.label || order.deliveryAddress.type || 'Address')
-                  : 'Address'}
-              </Text>
+        {/* 3. Delivery & Payment Grid */}
+        <Text style={styles.sectionHeaderLabel}>Details</Text>
+        <View style={styles.gridContainer}>
+          <View style={styles.gridCard}>
+            <View style={styles.iconCircle}>
+              <Ionicons name='location' size={18} color={COLORS.primary} />
             </View>
-            <Text style={styles.addressText}>{getAddressString(order.deliveryAddress)}</Text>
-            {typeof order.deliveryAddress === 'object' && order.deliveryAddress.contactName && (
-              <Text style={styles.addressContact}>
-                {order.deliveryAddress.contactName}
-                {order.deliveryAddress.contactPhone && ` • ${order.deliveryAddress.contactPhone}`}
-              </Text>
-            )}
+            <Text style={styles.gridLabel}>Delivery to</Text>
+            <Text style={styles.gridValue} numberOfLines={3}>
+              {getAddressString(order.deliveryAddress)}
+            </Text>
           </View>
-        </View>
 
-        {/* Payment Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Payment Information</Text>
-          <View style={styles.paymentCard}>
-            <View style={styles.paymentRow}>
-              <Ionicons name='card-outline' size={20} color='#666' />
-              <Text style={styles.paymentLabel}>Payment Method</Text>
+          <View style={styles.gridCard}>
+            <View style={styles.iconCircle}>
+              <Ionicons name='card' size={18} color={COLORS.textDark} />
             </View>
-            <Text style={styles.paymentValue}>{formatPaymentMethod(order.paymentMethod)}</Text>
-            <View style={styles.paymentRow}>
-              <Text style={styles.paymentLabel}>Payment Status</Text>
-            </View>
-            <Text style={[styles.paymentValue, { color: getStatusColor(order.paymentStatus) }]}>
-              {formatStatus(order.paymentStatus)}
+            <Text style={styles.gridLabel}>Payment</Text>
+            <Text style={styles.gridValue}>
+              {order.paymentMethod === 'cod' ? 'Cash' : 'Online'}
+              {'\n'}
+              <Text
+                style={{
+                  color:
+                    order.paymentStatus === 'paid'
+                      ? COLORS.primary
+                      : COLORS.danger,
+                }}
+              >
+                {order.paymentStatus.toUpperCase()}
+              </Text>
             </Text>
           </View>
         </View>
 
-        {/* Order Summary */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Order Summary</Text>
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>₹{order.subtotal.toFixed(2)}</Text>
-            </View>
-            {order.tax > 0 && (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Tax</Text>
-                <Text style={styles.summaryValue}>
-                  ₹{order.tax.toFixed(2)}
-                </Text>
-              </View>
-            )}
-            {order.discount > 0 && (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Discount</Text>
-                <Text style={styles.discountValue}>
-                  -₹{order.discount.toFixed(2)}
-                </Text>
-              </View>
-            )}
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Delivery Fee</Text>
-              <Text style={styles.summaryValue}>
-                ₹{order.deliveryFee.toFixed(2)}
+        {/* 4. Receipt Summary */}
+        <View style={styles.receiptContainer}>
+          <Text style={styles.receiptTitle}>Order Summary</Text>
+          <DashedLine />
+
+          <View style={styles.billRow}>
+            <Text style={styles.billLabel}>Subtotal</Text>
+            <Text style={styles.billValue}>₹{order.subtotal.toFixed(2)}</Text>
+          </View>
+
+          <View style={styles.billRow}>
+            <Text style={styles.billLabel}>Delivery Fee</Text>
+            <Text style={styles.billValue}>
+              ₹{order.deliveryFee.toFixed(2)}
+            </Text>
+          </View>
+
+          {order.discount > 0 && (
+            <View style={styles.billRow}>
+              <Text style={styles.billLabel}>Discount</Text>
+              <Text style={[styles.billValue, styles.discountText]}>
+                -₹{order.discount.toFixed(2)}
               </Text>
             </View>
-            <View style={[styles.summaryRow, styles.totalRow]}>
-              <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>₹{order.total.toFixed(2)}</Text>
-            </View>
+          )}
+
+          <View style={styles.billRow}>
+            <Text style={styles.billLabel}>Taxes</Text>
+            <Text style={styles.billValue}>₹{order.tax.toFixed(2)}</Text>
+          </View>
+
+          <DashedLine />
+
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total Amount</Text>
+            <Text style={styles.totalValue}>₹{order.total.toFixed(2)}</Text>
           </View>
         </View>
+
+        <SafeAreaView edges={['bottom']}>
+          <View style={{ height: 100 }} />
+        </SafeAreaView>
       </ScrollView>
 
-      {/* Action Buttons */}
-      {order.status.toLowerCase() === 'delivered' && (
-        <SafeAreaView edges={['bottom']} style={styles.footerContainer}>
-          <View style={styles.footer}>
-            <TouchableOpacity style={styles.reorderButton}>
-              <Ionicons name='refresh' size={20} color='#4CAF50' />
-              <Text style={styles.reorderButtonText}>Reorder</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
+      {/* Floating Action Icons */}
+      {order.status === 'delivered' && (
+        <View style={styles.floatingActions}>
+          <TouchableOpacity style={styles.floatingButton}>
+            <Ionicons name='refresh' size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // --- CONTAINER ---
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 16,
+    backgroundColor: COLORS.bg,
   },
   errorContainer: {
     flex: 1,
@@ -441,9 +482,10 @@ const styles = StyleSheet.create({
     paddingTop: 100,
   },
   errorText: {
-    fontSize: 18,
-    color: '#999',
+    fontSize: 16,
+    color: COLORS.textGray,
     marginTop: 16,
+    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,
@@ -453,269 +495,363 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: '#666',
+    color: COLORS.textGray,
     marginTop: 16,
-  },
-  addressContact: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 8,
     fontWeight: '500',
   },
-  orderHeaderCard: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#F3F6F4',
+  scrollView: {
+    flex: 1,
   },
-  orderHeaderTop: {
+  scrollContent: {
+    padding: 16,
+    paddingTop: 8,
+    paddingBottom: 0,
+  },
+
+  // --- SECTION HEADERS ---
+  section: {
+    marginTop: 16,
+    paddingHorizontal: 0,
+  },
+  sectionHeaderLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textGray,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 24,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+
+  // --- CARDS ---
+  sectionCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    marginBottom: 20,
   },
-  orderHeaderLeft: {
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textDark,
+  },
+  dateText: {
+    fontSize: 12,
+    color: COLORS.textGray,
+    fontWeight: '500',
+  },
+
+  // --- TIMELINE ---
+  timelineContainer: {
+    flexDirection: 'column',
+    gap: 0,
+    paddingVertical: 4,
+  },
+  timelineStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 8,
+  },
+  timelineStepContent: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-  orderInfo: {
-    marginLeft: 12,
+  timelineDotContainer: {
+    alignItems: 'center',
+    marginRight: 14,
+    position: 'relative',
+    width: 24,
   },
-  orderId: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
+  timelineDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.bg,
+    zIndex: 2,
   },
-  orderDate: {
-    fontSize: 14,
-    color: '#666',
+  timelineDotActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primarySoft,
   },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+  timelineLine: {
+    position: 'absolute',
+    top: 20,
+    left: '50%',
+    marginLeft: -1,
+    width: 2,
+    height: 16,
+    backgroundColor: COLORS.border,
+    zIndex: 1,
   },
-  statusText: {
+  timelineLineActive: {
+    backgroundColor: COLORS.primary,
+  },
+  timelineLabel: {
     fontSize: 13,
+    color: COLORS.textLight,
     fontWeight: '600',
+    textTransform: 'capitalize',
+    textAlign: 'left',
+    flex: 1,
+    lineHeight: 20,
+    paddingTop: 2,
   },
-  trackingContainer: {
+  timelineLabelActive: {
+    color: COLORS.textDark,
+    fontWeight: '700',
+  },
+  cancelledBanner: {
+    backgroundColor: '#FEF2F2',
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F6F4',
-    gap: 8,
-  },
-  trackingLabel: {
-    fontSize: 14,
-    color: '#666',
-  },
-  trackingNumber: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
-  section: {
-    marginTop: 16,
-    paddingHorizontal: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 12,
-  },
-  itemsContainer: {
-    gap: 12,
-  },
-  orderItem: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
     padding: 12,
-    borderRadius: 14,
+    borderRadius: 12,
+    gap: 8,
     borderWidth: 1,
-    borderColor: '#F3F6F4',
-    alignItems: 'center',
-    gap: 12,
+    borderColor: '#FECACA',
   },
-  itemImageContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
+  cancelledText: {
+    color: COLORS.danger,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  refundedBanner: {
+    backgroundColor: COLORS.primarySoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  refundedText: {
+    color: COLORS.primary,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  etaContainer: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primarySoft,
+    padding: 10,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    gap: 6,
+  },
+  etaText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  // --- ITEMS ---
+  itemsWrapper: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    padding: 4,
     overflow: 'hidden',
-    backgroundColor: '#F3F6F4',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  itemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  imageWrapper: {
+    position: 'relative',
+    marginRight: 16,
   },
   itemImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: COLORS.border,
   },
-  itemPlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#E1F3E1',
+  placeholderImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: COLORS.primarySoft,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  itemPlaceholderText: {
-    fontSize: 24,
-    color: '#2E7D32',
-    fontWeight: 'bold',
+  placeholderText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
-  itemDetails: {
+  quantityBadge: {
+    position: 'absolute',
+    bottom: -6,
+    right: -6,
+    backgroundColor: COLORS.textDark,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1.5,
+    borderColor: COLORS.bg,
+  },
+  quantityText: {
+    color: COLORS.bg,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  itemInfo: {
     flex: 1,
   },
   itemName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#333',
+    color: COLORS.textDark,
     marginBottom: 4,
   },
-  itemUnit: {
+  itemVariant: {
     fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-  },
-  itemPriceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    color: COLORS.textGray,
+    fontWeight: '500',
   },
   itemPrice: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.textDark,
   },
-  itemOriginalPrice: {
+
+  // --- GRID DETAILS ---
+  gridContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  gridCard: {
+    flex: 1,
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  iconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primarySoft,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  gridLabel: {
     fontSize: 12,
-    color: '#999',
-    textDecorationLine: 'line-through',
+    color: COLORS.textGray,
+    marginBottom: 4,
+    fontWeight: '500',
   },
-  itemTotal: {
+  gridValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textDark,
+    lineHeight: 18,
+  },
+
+  // --- RECEIPT ---
+  receiptContainer: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 20,
+    padding: 20,
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  receiptTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#333',
-    minWidth: 60,
-    textAlign: 'right',
+    color: COLORS.textDark,
+    marginBottom: 16,
   },
-  addressCard: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#F3F6F4',
-  },
-  addressHeader: {
+  dashedLineContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
+    overflow: 'hidden',
+    height: 1,
+    marginVertical: 16,
   },
-  addressLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+  dashItem: {
+    width: 6,
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginRight: 4,
   },
-  addressText: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-  },
-  paymentCard: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#F3F6F4',
-  },
-  paymentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
-  },
-  paymentLabel: {
-    fontSize: 14,
-    color: '#666',
-  },
-  paymentValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginTop: 4,
-  },
-  summaryCard: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#F3F6F4',
-  },
-  summaryRow: {
+  billRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  summaryLabel: {
+  billLabel: {
     fontSize: 14,
-    color: '#666',
+    color: COLORS.textGray,
+    fontWeight: '500',
   },
-  summaryValue: {
+  billValue: {
     fontSize: 14,
-    color: '#666',
-  },
-  discountValue: {
-    fontSize: 14,
-    color: '#4CAF50',
+    color: COLORS.textDark,
     fontWeight: '600',
   },
+  discountText: {
+    color: COLORS.primary,
+  },
   totalRow: {
-    borderTopWidth: 1,
-    borderTopColor: '#F3F6F4',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
     paddingTop: 12,
-    marginTop: 8,
-    marginBottom: 0,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   totalLabel: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.textDark,
   },
   totalValue: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#4CAF50',
+    fontWeight: '700',
+    color: COLORS.primary,
   },
-  footerContainer: {
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#F3F6F4',
-  },
-  footer: {
-    padding: 16,
-  },
-  reorderButton: {
+
+  // --- FLOATING ACTIONS ---
+  floatingActions: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-    paddingVertical: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#4CAF50',
-    gap: 8,
+    gap: 12,
   },
-  reorderButtonText: {
-    color: '#4CAF50',
-    fontSize: 16,
-    fontWeight: 'bold',
+  floatingButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
-

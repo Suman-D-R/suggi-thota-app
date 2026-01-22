@@ -13,9 +13,11 @@ export default function LoginScreen() {
     router.replace('/(tabs)/home');
   };
 
-  const handleSkip = () => {
-    router.push('/(tabs)/home');
-    AsyncStorage.setItem('onboarding_completed', 'true');
+  const handleSkip = async () => {
+    // Mark onboarding as completed first
+    await AsyncStorage.setItem('onboarding_completed', 'true');
+    // Replace the entire stack with home to prevent going back to onboarding
+    router.replace('/(tabs)/home');
   };
 
   return (

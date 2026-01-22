@@ -1,170 +1,327 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Image,
 } from 'react-native';
 import Header from '../../components/Header';
-import LoginModal from '../../components/LoginModal';
+import LoginPrompt from '../../components/LoginPrompt';
+import { orderAPI } from '../../lib/api';
+import { useCartStore } from '../../store/cartStore';
 import { useUserStore } from '../../store/userStore';
-import { getProductById } from '../../data/dummyData';
 
-// Dummy orders data - only delivered orders for reordering
-const reorderableOrders = [
-  {
-    id: 'ORD001',
-    date: '2024-01-15',
-    items: [
-      { productId: '1', quantity: 2, price: 50, discount: 10 },
-      { productId: '2', quantity: 1, price: 40 },
-      { productId: '7', quantity: 2, price: 60, discount: 10 },
-    ],
-    total: 455,
-  },
-  {
-    id: 'ORD002',
-    date: '2024-01-10',
-    items: [
-      { productId: '3', quantity: 2, price: 35, discount: 15 },
-      { productId: '8', quantity: 1, price: 120 },
-    ],
-    total: 359.5,
-  },
-];
+// --- MODERN THEME CONSTANTS ---
+const COLORS = {
+  primary: '#059669', // Modern Emerald
+  primarySoft: '#ECFDF5',
+  textDark: '#111827',
+  textGray: '#6B7280',
+  textLight: '#9CA3AF',
+  danger: '#EF4444',
+  bg: '#FFFFFF',
+  cardBg: '#FFFFFF',
+  border: '#F3F4F6',
+};
+
+// --- Types ---
+interface OrderItem {
+  product:
+  | string
+  | {
+    _id: string;
+    name: string;
+    images?: string[];
+  };
+  quantity: number;
+  price: number;
+  total: number;
+  size?: number;
+  unit?: string;
+}
+
+interface Order {
+  _id: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  total: number;
+  createdAt: string;
+  items: OrderItem[];
+}
+
+const { width } = Dimensions.get('window');
 
 export default function ReorderTab() {
   const router = useRouter();
   const isLoggedIn = useUserStore((state) => state.isLoggedIn);
-  const [showLoginModal, setShowLoginModal] = useState(false);
+  const loadCart = useCartStore((state) => state.loadCart);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [reorderingOrderId, setReorderingOrderId] = useState<string | null>(
+    null
+  );
+  const [error, setError] = useState<string | null>(null);
 
-  const handleReorder = (orderId: string) => {
-    // Navigate to order details or directly add to cart
-    router.push(`/profile/orders/${orderId}`);
+  // --- Logic ---
+  const loadOrders = useCallback(
+    async (showRefreshing = false) => {
+      if (!isLoggedIn) {
+        setOrders([]);
+        setIsLoading(false);
+        return;
+      }
+      try {
+        if (showRefreshing) setRefreshing(true);
+        else setIsLoading(true);
+        setError(null);
+
+        const response = await orderAPI.getUserOrders(1, 20); // Fetch latest 20
+        if (response.success && response.data?.orders) {
+          const delivered = response.data.orders.filter(
+            (o: Order) => o.status === 'delivered'
+          );
+          setOrders(delivered);
+        } else {
+          setOrders([]);
+        }
+      } catch (err: any) {
+        console.error('Failed to load orders:', err);
+        setError(err.message || 'Failed to load orders');
+      } finally {
+        setIsLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [isLoggedIn]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      loadOrders();
+    }, [loadOrders])
+  );
+
+  const handleReorder = async (orderId: string) => {
+    if (reorderingOrderId) return;
+    try {
+      setReorderingOrderId(orderId);
+      const response = await orderAPI.reorder(orderId);
+
+      if (response.success) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await loadCart();
+
+        const addedCount = response.data?.summary?.addedItems || 0;
+        Alert.alert(
+          'Cart Updated',
+          `Added ${addedCount} items from your past order.`,
+          [
+            { text: 'Go to Cart', onPress: () => router.push('/cart') },
+            { text: 'Keep Shopping', style: 'cancel' },
+          ]
+        );
+      } else {
+        Alert.alert('Reorder Failed', response.message);
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not reorder items.');
+    } finally {
+      setReorderingOrderId(null);
+    }
   };
 
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-IN', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
+  // --- Helper to get images for preview ---
+  const getPreviewImages = (items: OrderItem[]) => {
+    // Return max 4 items for preview
+    return items.slice(0, 5).map((item) => {
+      if (typeof item.product === 'object' && item.product.images?.length) {
+        return item.product.images[0];
+      }
+      return null;
+    });
+  };
+
+  // --- UI Components ---
   if (!isLoggedIn) {
     return (
+      <LoginPrompt
+        icon='receipt-outline'
+        title='Login to Reorder'
+        subtitle='View your history and reorder your favorites in one tap.'
+        buttonText='Sign In / Sign Up'
+        modalTitle='Login Required'
+        modalMessage='Please login to access history'
+        showArrowIcon={true}
+      />
+    );
+  }
+
+  if (isLoading && !refreshing) {
+    return (
       <View style={styles.container}>
-        <Header />
-        <View style={styles.loginContainer}>
-          <View style={styles.loginContent}>
-            <Ionicons name="refresh-outline" size={80} color="#4CAF50" />
-            <Text style={styles.loginTitle}>Reorder Your Favorites</Text>
-            <Text style={styles.loginSubtitle}>
-              Sign in to quickly reorder your previous purchases
-            </Text>
-            <TouchableOpacity
-              style={styles.loginButton}
-              onPress={() => setShowLoginModal(true)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.loginButtonText}>Sign In</Text>
-            </TouchableOpacity>
-          </View>
+        <Header title='Past Orders' showBack={true} />
+        <View style={styles.centerContent}>
+          <ActivityIndicator size='large' color={COLORS.primary} />
+          <Text style={styles.loadingText}>Loading orders...</Text>
         </View>
-        <LoginModal
-          visible={showLoginModal}
-          onClose={() => setShowLoginModal(false)}
-          title='Login Required'
-          message='Please login to access your reorder history'
-        />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Header />
+      <Header title='Past Orders' />
+
       <ScrollView
         style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadOrders(true)}
+            colors={[COLORS.primary]}
+            tintColor={COLORS.primary}
+          />
+        }
       >
-        {reorderableOrders.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="refresh-outline" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>No orders to reorder</Text>
-            <Text style={styles.emptySubtext}>
-              Your previous orders will appear here for quick reordering
+        {orders.length === 0 ? (
+          <View style={styles.centerContent}>
+            <View style={[styles.iconCircle, styles.emptyIconCircle]}>
+              <Ionicons
+                name='basket-outline'
+                size={40}
+                color={COLORS.textLight}
+              />
+            </View>
+            <Text style={styles.titleText}>No past orders</Text>
+            <Text style={styles.subText}>
+              Once you place an order, it will show up here for easy reordering.
             </Text>
           </View>
         ) : (
-          <>
-            <View style={styles.headerSection}>
-              <Text style={styles.headerTitle}>Quick Reorder</Text>
-              <Text style={styles.headerSubtitle}>
-                Reorder your previous purchases with one tap
-              </Text>
-            </View>
+          orders.map((order) => {
+            const isReordering = reorderingOrderId === order._id;
+            const previewImages = getPreviewImages(order.items);
+            const remainingCount = Math.max(0, order.items.length - 4);
 
-            {reorderableOrders.map((order) => (
-              <View key={order.id} style={styles.orderCard}>
-                <View style={styles.orderHeader}>
-                  <View style={styles.orderHeaderLeft}>
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={24}
-                      color="#4CAF50"
-                    />
-                    <View style={styles.orderInfo}>
-                      <Text style={styles.orderId}>Order #{order.id}</Text>
-                      <Text style={styles.orderDate}>{order.date}</Text>
-                    </View>
+            return (
+              <View key={order._id} style={styles.card}>
+                {/* 1. Header: Date & Status */}
+                <View style={styles.cardHeader}>
+                  <View>
+                    <Text style={styles.dateText}>
+                      {formatDate(order.createdAt)}
+                    </Text>
+                    <Text style={styles.orderIdText}>
+                      ID:{' '}
+                      {order.orderNumber || order._id.slice(-6).toUpperCase()}
+                    </Text>
                   </View>
-                  <Text style={styles.orderTotal}>₹{order.total.toFixed(2)}</Text>
+                  <View style={styles.statusBadge}>
+                    <Text style={styles.statusText}>Delivered</Text>
+                    <Ionicons
+                      name='checkmark-circle'
+                      size={14}
+                      color={COLORS.primary}
+                    />
+                  </View>
                 </View>
 
+                {/* 2. Divider */}
                 <View style={styles.divider} />
 
-                <View style={styles.itemsPreview}>
-                  {order.items.slice(0, 3).map((item, index) => {
-                    const product = getProductById(item.productId);
-                    if (!product) return null;
-
-                    return (
-                      <View key={index} style={styles.itemPreview}>
-                        {product.image ? (
+                {/* 3. Visual Item Preview (Horizontal Scroll) */}
+                <View style={styles.previewContainer}>
+                  <Text style={styles.itemsLabel}>
+                    {order.items.length} items included
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.imageList}
+                  >
+                    {previewImages.map((imgUri, index) => (
+                      <View key={index} style={styles.imageWrapper}>
+                        {imgUri ? (
                           <Image
-                            source={{ uri: product.image }}
+                            source={{ uri: imgUri }}
                             style={styles.itemImage}
                           />
                         ) : (
-                          <View style={styles.itemPlaceholder}>
-                            <Text style={styles.itemPlaceholderText}>
-                              {product.name.charAt(0)}
-                            </Text>
+                          <View style={styles.placeholderImage}>
+                            <Ionicons
+                              name='image-outline'
+                              size={16}
+                              color={COLORS.textLight}
+                            />
                           </View>
                         )}
-                        <Text style={styles.itemQuantity}>×{item.quantity}</Text>
                       </View>
-                    );
-                  })}
-                  {order.items.length > 3 && (
-                    <View style={styles.moreItems}>
-                      <Text style={styles.moreItemsText}>
-                        +{order.items.length - 3} more
-                      </Text>
-                    </View>
-                  )}
+                    ))}
+                    {remainingCount > 0 && (
+                      <View style={styles.moreCountWrapper}>
+                        <Text style={styles.moreCountText}>
+                          +{remainingCount}
+                        </Text>
+                      </View>
+                    )}
+                  </ScrollView>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.reorderButton}
-                  onPress={() => handleReorder(order.id)}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="refresh" size={20} color="#fff" />
-                  <Text style={styles.reorderButtonText}>Reorder</Text>
-                </TouchableOpacity>
+                {/* 4. Footer: Total & Action Button */}
+                <View style={styles.cardFooter}>
+                  <View>
+                    <Text style={styles.totalLabel}>Total Amount</Text>
+                    <Text style={styles.totalPrice}>
+                      ₹{order.total.toFixed(0)}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.reorderBtn,
+                      isReordering && styles.reorderBtnDisabled,
+                    ]}
+                    onPress={() => handleReorder(order._id)}
+                    disabled={isReordering}
+                    activeOpacity={0.8}
+                  >
+                    {isReordering ? (
+                      <ActivityIndicator color='#FFF' size='small' />
+                    ) : (
+                      <>
+                        <Ionicons name='refresh' size={18} color='#FFF' />
+                        <Text style={styles.reorderBtnText}>Reorder</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
-            ))}
-          </>
+            );
+          })
         )}
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
@@ -173,197 +330,193 @@ export default function ReorderTab() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.bg,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 90,
-  },
-  headerSection: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#666',
-  },
-  emptyContainer: {
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 16, paddingBottom: 40 },
+
+  /* --- Loading / Empty States --- */
+  centerContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 100,
-    paddingHorizontal: 32,
+    padding: 32,
+    marginTop: 60,
   },
-  emptyText: {
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.primarySoft,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  emptyIconCircle: {
+    backgroundColor: COLORS.border,
+  },
+  titleText: {
     fontSize: 20,
-    fontWeight: '600',
-    color: '#333',
-    marginTop: 16,
+    fontWeight: '700',
+    color: COLORS.textDark,
+    marginBottom: 8,
   },
-  emptySubtext: {
+  subText: {
     fontSize: 14,
-    color: '#999',
-    marginTop: 8,
+    color: COLORS.textGray,
     textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
   },
-  orderCard: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginTop: 16,
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: COLORS.textGray,
+    fontWeight: '500',
+  },
+
+  /* --- Order Card Styles --- */
+  card: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    marginBottom: 16,
     padding: 16,
-    borderRadius: 14,
+    elevation: 2,
     borderWidth: 1,
-    borderColor: '#F3F6F4',
+    borderColor: COLORS.border,
   },
-  orderHeader: {
+
+  /* Header */
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
   },
-  orderHeaderLeft: {
+  dateText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.textDark,
+    marginBottom: 2,
+  },
+  orderIdText: {
+    fontSize: 12,
+    color: COLORS.textLight,
+    fontFamily: Platform.select({ ios: 'Courier', android: 'monospace' }),
+  },
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    backgroundColor: COLORS.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 4,
   },
-  orderInfo: {
-    marginLeft: 12,
-  },
-  orderId: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
-  },
-  orderDate: {
+  statusText: {
     fontSize: 12,
-    color: '#666',
+    color: COLORS.primary,
+    fontWeight: '600',
   },
-  orderTotal: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#4CAF50',
-  },
+
   divider: {
     height: 1,
-    backgroundColor: '#F3F6F4',
-    marginVertical: 12,
+    backgroundColor: COLORS.border,
+    marginBottom: 12,
   },
-  itemsPreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  /* Item Preview */
+  previewContainer: {
     marginBottom: 16,
+  },
+  itemsLabel: {
+    fontSize: 12,
+    color: COLORS.textGray,
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  imageList: {
+    alignItems: 'center',
     gap: 8,
   },
-  itemPreview: {
-    position: 'relative',
+  imageWrapper: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 2,
+    backgroundColor: COLORS.bg,
   },
   itemImage: {
-    width: 50,
-    height: 50,
+    width: '100%',
+    height: '100%',
     borderRadius: 8,
-    backgroundColor: '#F3F6F4',
   },
-  itemPlaceholder: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-    backgroundColor: '#E1F3E1',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  itemPlaceholderText: {
-    fontSize: 20,
-    color: '#2E7D32',
-    fontWeight: 'bold',
-  },
-  itemQuantity: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    backgroundColor: '#4CAF50',
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 8,
-    minWidth: 20,
-    textAlign: 'center',
-  },
-  moreItems: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-    backgroundColor: '#F3F6F4',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  moreItemsText: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '600',
-  },
-  reorderButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#4CAF50',
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  reorderButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  loginContainer: {
+  placeholderImage: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    backgroundColor: COLORS.border,
+    borderRadius: 8,
   },
-  loginContent: {
-    alignItems: 'center',
-    width: '100%',
-  },
-  loginTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginTop: 24,
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  loginSubtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 24,
-  },
-  loginButton: {
-    backgroundColor: '#4CAF50',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 48,
-    width: '100%',
+  moreCountWrapper: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: COLORS.border,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  loginButtonText: {
-    fontSize: 16,
+  moreCountText: {
+    fontSize: 12,
     fontWeight: '600',
-    color: '#fff',
+    color: COLORS.textGray,
+  },
+
+  /* Footer */
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: COLORS.border,
+    marginHorizontal: -16,
+    marginBottom: -16,
+    padding: 16,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  totalLabel: {
+    fontSize: 11,
+    color: COLORS.textGray,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+    fontWeight: '500',
+  },
+  totalPrice: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textDark,
+  },
+  reorderBtn: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 6,
+    elevation: 2,
+  },
+  reorderBtnDisabled: {
+    backgroundColor: COLORS.textLight,
+  },
+  reorderBtnText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
-

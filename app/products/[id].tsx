@@ -44,6 +44,7 @@ interface ProductVariant {
   discount?: number;
   stock?: number;
   isOutOfStock?: boolean;
+  maximumOrderLimit?: number;
 }
 
 interface Product {
@@ -118,13 +119,21 @@ export default function ProductDetailsScreen() {
       ? getItemQuantity(product._id, selectedVariant)
       : 0;
 
+  // Check stock and maximum order limit status
+  const selectedVariantStock = selectedVariant?.stock || 0;
+  const isOutOfStock = selectedVariant?.isOutOfStock || selectedVariantStock === 0;
+  const maximumOrderLimit = selectedVariant?.maximumOrderLimit;
+  const isMaxLimitReached = maximumOrderLimit !== undefined && quantity >= maximumOrderLimit;
+  const shouldShowWarning = isOutOfStock || isMaxLimitReached;
+  const warningText = isOutOfStock ? 'No more stock available' : 'Maximum allowed quantity reached';
+
   // Get available variants or use default size/unit
   const availableVariants =
     product?.variants && product.variants.length > 0
       ? product.variants
       : product
-      ? [{ size: product.size, unit: product.unit }]
-      : [];
+        ? [{ size: product.size, unit: product.unit }]
+        : [];
 
   // Get pricing for selected variant or fallback to product-level pricing
   const getVariantPrice = (variant: ProductVariant | null) => {
@@ -143,12 +152,12 @@ export default function ProductDetailsScreen() {
     return {
       sellingPrice:
         typeof product?.sellingPrice === 'number' &&
-        !isNaN(product.sellingPrice)
+          !isNaN(product.sellingPrice)
           ? product.sellingPrice
           : 0,
       originalPrice:
         typeof product?.originalPrice === 'number' &&
-        !isNaN(product.originalPrice)
+          !isNaN(product.originalPrice)
           ? product.originalPrice
           : 0,
       discount:
@@ -226,27 +235,58 @@ export default function ProductDetailsScreen() {
   const sellingPrice = selectedVariantPricing.sellingPrice;
   const discount = selectedVariantPricing.discount;
 
-  const handleIncreaseQuantity = () => {
+  const handleIncreaseQuantity = async () => {
     if (!product || !selectedVariant) return;
-    if (quantity === 0) {
-      addItem(product, selectedVariant);
-    } else {
-      updateQuantity(product._id, quantity + 1, selectedVariant);
+    // Check stock before increasing - don't allow if stock is 0
+    if (isOutOfStock) {
+      return; // Don't allow increase if no stock available
+    }
+    // Check maximum order limit before increasing
+    if (maximumOrderLimit !== undefined && quantity >= maximumOrderLimit) {
+      return; // Don't allow increase if limit reached
+    }
+    try {
+      if (quantity === 0) {
+        await addItem(product, selectedVariant);
+      } else {
+        await updateQuantity(product._id, quantity + 1, selectedVariant);
+      }
+    } catch (error) {
+      // Silently handle error - stock check already prevents this
+      console.error('Failed to update quantity:', error);
     }
   };
 
-  const handleDecreaseQuantity = () => {
+  const handleDecreaseQuantity = async () => {
     if (!product || !selectedVariant) return;
-    if (quantity > 1) {
-      updateQuantity(product._id, quantity - 1, selectedVariant);
-    } else {
-      updateQuantity(product._id, 0, selectedVariant);
+    try {
+      if (quantity > 1) {
+        await updateQuantity(product._id, quantity - 1, selectedVariant);
+      } else {
+        await updateQuantity(product._id, 0, selectedVariant);
+      }
+    } catch (error) {
+      // Error is already handled in cart store with Alert
+      console.error('Failed to update quantity:', error);
     }
   };
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (!product || !selectedVariant) return;
-    addItem(product, selectedVariant);
+    // Check stock before adding - don't allow if stock is 0
+    if (isOutOfStock) {
+      return; // Don't allow adding if no stock available
+    }
+    // Don't allow adding if max limit reached
+    if (isMaxLimitReached) {
+      return;
+    }
+    try {
+      await addItem(product, selectedVariant);
+    } catch (error) {
+      // Silently handle error - stock check already prevents this
+      console.error('Failed to add item to cart:', error);
+    }
   };
 
   return (
@@ -291,7 +331,18 @@ export default function ProductDetailsScreen() {
         <View style={styles.imageContainer}>
           <Animated.View style={[StyleSheet.absoluteFill, imageStyle]}>
             {product.images && product.images.length > 0 ? (
-              <Image source={{ uri: product.images[0] }} style={styles.image} />
+              <View style={styles.imageWrapper}>
+                <Image
+                  source={{ uri: product.images[0] }}
+                  style={[
+                    styles.image,
+                    shouldShowWarning && styles.imageGrayscale
+                  ]}
+                />
+                {shouldShowWarning && (
+                  <View style={styles.grayscaleOverlay} />
+                )}
+              </View>
             ) : (
               <View style={styles.placeholder}>
                 <Text style={styles.placeholderText}>
@@ -303,6 +354,12 @@ export default function ProductDetailsScreen() {
               colors={['transparent', 'rgba(0,0,0,0.1)']}
               style={StyleSheet.absoluteFill}
             />
+            {/* WARNING OVERLAY TEXT */}
+            {shouldShowWarning && (
+              <View style={styles.warningOverlay}>
+                <Text style={styles.warningText}>{warningText}</Text>
+              </View>
+            )}
           </Animated.View>
         </View>
 
@@ -446,11 +503,25 @@ export default function ProductDetailsScreen() {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              style={styles.actionButton}
+              style={[
+                styles.actionButton,
+                isOutOfStock && styles.actionButtonDisabled,
+              ]}
               onPress={handleAddToCart}
+              disabled={isOutOfStock}
             >
-              <IconShoppingCart size={20} color='#fff' />
-              <Text style={styles.actionButtonText}>Add to Cart</Text>
+              <IconShoppingCart
+                size={20}
+                color={isOutOfStock ? '#999' : '#fff'}
+              />
+              <Text
+                style={[
+                  styles.actionButtonText,
+                  isOutOfStock && styles.actionButtonTextDisabled,
+                ]}
+              >
+                Add to Cart
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -542,10 +613,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#FBFBFB',
     overflow: 'hidden',
   },
+  imageWrapper: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
   image: {
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
+  },
+  imageGrayscale: {
+    opacity: 0.5,
+  },
+  grayscaleOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  warningOverlay: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(255, 87, 34, 0.95)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    zIndex: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warningText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   placeholder: {
     flex: 1,
@@ -733,6 +835,13 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  actionButtonDisabled: {
+    opacity: 0.5,
+    backgroundColor: '#999',
+  },
+  actionButtonTextDisabled: {
+    color: '#ccc',
   },
   variantContainer: {
     flexDirection: 'row',

@@ -1,17 +1,22 @@
-import {
-  IconHelpCircle,
-  IconInfoCircle,
-  IconLogout,
-  IconMapPin,
-  IconMessageCircle,
-  IconReceipt,
-  IconUser,
-  IconUserCircle,
-} from '@tabler/icons-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Header from '../components/Header';
+import LoginForm from '../components/LoginForm';
 import { useUserStore } from '../store/userStore';
+
+// --- MODERN THEME CONSTANTS ---
+const COLORS = {
+  primary: '#059669', // Modern Emerald
+  primarySoft: '#ECFDF5',
+  textDark: '#111827',
+  textGray: '#6B7280',
+  textLight: '#9CA3AF',
+  danger: '#EF4444',
+  bg: '#F8FAFC',
+  cardBg: '#FFFFFF',
+  border: '#F3F4F6',
+};
 
 export default function AccountPage() {
   const router = useRouter();
@@ -27,25 +32,25 @@ export default function AccountPage() {
     {
       id: 'profile',
       title: 'My Profile',
-      Icon: IconUser,
+      iconName: 'person-outline',
       onPress: () => router.push('/profile'),
     },
     {
       id: 'orders',
       title: 'My Orders',
-      Icon: IconReceipt,
+      iconName: 'receipt-outline',
       onPress: () => router.push('/profile/orders'),
     },
     {
       id: 'address',
-      title: 'Address',
-      Icon: IconMapPin,
+      title: 'Address Book',
+      iconName: 'location-outline',
       onPress: () => router.push('/profile/address'),
     },
     {
       id: 'help',
       title: 'Help & Support',
-      Icon: IconHelpCircle,
+      iconName: 'help-buoy-outline',
       onPress: () => router.push('/profile/help-support'),
     },
   ];
@@ -53,190 +58,276 @@ export default function AccountPage() {
   const aboutItems = [
     {
       id: 'about',
-      title: 'About',
-      Icon: IconInfoCircle,
+      title: 'About Vitura',
+      iconName: 'information-circle-outline',
       onPress: () => router.push('/profile/about'),
     },
     {
       id: 'feedback',
-      title: 'Feedback',
-      Icon: IconMessageCircle,
+      title: 'Send Feedback',
+      iconName: 'chatbox-ellipses-outline',
       onPress: () => router.push('/profile/feedback'),
     },
     {
       id: 'logout',
-      title: 'Logout',
-      Icon: IconLogout,
+      title: 'Log Out',
+      iconName: 'log-out-outline',
       onPress: handleLogout,
+      isDestructive: true,
     },
   ];
 
+  // --- LOGIN / GUEST VIEW ---
   if (!isLoggedIn) {
     return (
       <View style={styles.container}>
         <Header showBack={true} />
-        <View style={styles.loginContainer}>
+        <LoginForm />
+        {/* <View style={styles.loginContainer}>
           <View style={styles.loginContent}>
-            <Text style={styles.loginTitle}>Hello!</Text>
+            <View style={styles.loginIconCircle}>
+              <Ionicons name='person' size={48} color={COLORS.primary} />
+            </View>
+            <Text style={styles.loginTitle}>Welcome to Vitura</Text>
             <Text style={styles.loginSubtitle}>
-              Welcome to Vitura. To continue, please sign in or create an
-              account.
+              Sign in to track your orders, manage addresses, and access your
+              wishlist.
             </Text>
+
             <View style={styles.buttonContainer}>
               <TouchableOpacity
-                style={[styles.loginButton, styles.signInButton]}
-                onPress={() => router.push('/login')}
-                activeOpacity={0.8}
+                style={styles.primaryButton}
+                onPress={() => router.replace('/login?redirect=/account')}
+                activeOpacity={0.7}
               >
-                <Text style={styles.loginButtonText}>Sign In</Text>
+                <Text style={styles.primaryButtonText}>Sign In</Text>
               </TouchableOpacity>
+
               <TouchableOpacity
-                style={[styles.loginButton, styles.loginButtonSecondary]}
-                onPress={() => router.push('/login')}
-                activeOpacity={0.8}
+                style={styles.secondaryButton}
+                onPress={() => router.replace('/login?redirect=/account')}
+                activeOpacity={0.7}
               >
-                <Text style={styles.loginButtonTextSecondary}>Login</Text>
+                <Text style={styles.secondaryButtonText}>Create Account</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </View> */}
       </View>
     );
   }
 
+  // --- LOGGED IN VIEW ---
   return (
     <View style={styles.container}>
-      <Header showBack={true} title='My Profile' backgroundColor='#FBFBFB' />
+      <Header showBack={true} title='Account' />
 
-      <View style={styles.profileSection}>
-        <View style={styles.avatar}>
-          <IconUserCircle size={48} strokeWidth={1} color='#4CAF50' />
+      {/* Profile Header */}
+      <View style={styles.profileHeader}>
+        <View style={styles.avatarContainer}>
+          <Text style={styles.avatarText}>
+            {profile?.firstName?.charAt(0) || 'V'}
+          </Text>
         </View>
-        <Text style={styles.name}>
-          {profile?.firstName} {profile?.lastName}
-        </Text>
-        <Text style={styles.email}>{profile?.email}</Text>
+        <View style={styles.profileInfo}>
+          <Text style={styles.name}>
+            {profile?.firstName} {profile?.lastName}
+          </Text>
+          <Text style={styles.email}>{profile?.email}</Text>
+        </View>
+        <TouchableOpacity style={styles.editButton} activeOpacity={0.7}>
+          <Ionicons name='pencil' size={16} color={COLORS.primary} />
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.infoSection}>
-        {menuItems.map((item) => {
-          const IconComponent = item.Icon;
-          return (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.menuCard}
-              onPress={item.onPress}
-            >
-              <View style={styles.iconContainer}>
-                <IconComponent size={20} strokeWidth={1.5} color='#00000070' />
-              </View>
-              <Text style={styles.menuText}>{item.title}</Text>
-            </TouchableOpacity>
-          );
-        })}
+      {/* Menu Section 1 */}
+      <View style={styles.sectionContainer}>
+        {menuItems.map((item, index) => (
+          <TouchableOpacity
+            key={item.id}
+            style={[
+              styles.menuRow,
+              index === menuItems.length - 1 && styles.menuRowLast,
+            ]}
+            onPress={item.onPress}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.iconBox, styles.primaryIconBox]}>
+              <Ionicons
+                name={item.iconName as any}
+                size={20}
+                color={COLORS.primary}
+              />
+            </View>
+            <Text style={styles.menuText}>{item.title}</Text>
+            <Ionicons
+              name='chevron-forward'
+              size={20}
+              color={COLORS.textLight}
+            />
+          </TouchableOpacity>
+        ))}
       </View>
 
-      <View style={styles.infoSection}>
-        {aboutItems.map((item) => {
-          const IconComponent = item.Icon;
-          return (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.menuCard}
-              onPress={item.onPress}
-              activeOpacity={0.8}
+      {/* Menu Section 2 */}
+      <View style={styles.sectionContainer}>
+        {aboutItems.map((item, index) => (
+          <TouchableOpacity
+            key={item.id}
+            style={[
+              styles.menuRow,
+              index === aboutItems.length - 1 && styles.menuRowLast,
+            ]}
+            onPress={item.onPress}
+            activeOpacity={0.7}
+          >
+            <View
+              style={[
+                styles.iconBox,
+                item.isDestructive
+                  ? styles.destructiveIconBox
+                  : styles.secondaryIconBox,
+              ]}
             >
-              <View style={styles.iconContainer}>
-                <IconComponent size={20} strokeWidth={1.5} color='#00000070' />
-              </View>
-              <Text style={styles.menuText}>{item.title}</Text>
-            </TouchableOpacity>
-          );
-        })}
+              <Ionicons
+                name={item.iconName as any}
+                size={20}
+                color={item.isDestructive ? COLORS.danger : COLORS.textGray}
+              />
+            </View>
+            <Text
+              style={[
+                styles.menuText,
+                item.isDestructive && styles.destructiveText,
+              ]}
+            >
+              {item.title}
+            </Text>
+            {!item.isDestructive && (
+              <Ionicons
+                name='chevron-forward'
+                size={20}
+                color={COLORS.textLight}
+              />
+            )}
+          </TouchableOpacity>
+        ))}
       </View>
+
+      {/* Footer */}
       <View style={styles.footer}>
         <Text style={styles.footerAppName}>Vitura</Text>
-        <Text style={styles.footerAppVersion}>(Version 1.0.0)</Text>
+        <Text style={styles.footerAppVersion}>v1.0.0</Text>
       </View>
     </View>
   );
 }
 
-const shadow = {
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.05,
-  shadowRadius: 8,
-  borderWidth: 0.2,
-  borderColor: '#E0E0E0',
-};
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FBFBFB',
+    backgroundColor: COLORS.bg,
   },
-  profileSection: {
-    display: 'flex',
+
+  // --- PROFILE HEADER ---
+  profileHeader: {
     flexDirection: 'row',
-    marginHorizontal: 16,
-    gap: 10,
-    backgroundColor: '#fff',
     alignItems: 'center',
+    backgroundColor: COLORS.cardBg,
+    marginHorizontal: 16,
     marginTop: 16,
-    marginBottom: 8,
-    borderRadius: 20,
-    padding: 16,
-    ...shadow,
+    marginBottom: 20,
+    padding: 20,
+    borderRadius: 16,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 40,
-    backgroundColor: '#E8F5E9',
+  avatarContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 16,
+  },
+  avatarText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  profileInfo: {
+    flex: 1,
   },
   name: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textDark,
     marginBottom: 4,
   },
   email: {
     fontSize: 14,
-    color: '#666',
+    color: COLORS.textGray,
   },
-  infoSection: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-    marginHorizontal: 16,
-    marginBottom: 8,
+  editButton: {
+    padding: 8,
     borderRadius: 20,
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-    backgroundColor: '#fff',
-    ...shadow,
+    backgroundColor: COLORS.primarySoft,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  menuCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+
+  // --- MENU LISTS ---
+  sectionContainer: {
+    backgroundColor: COLORS.cardBg,
+    marginHorizontal: 16,
+    marginBottom: 20,
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
-  iconContainer: {
-    width: 30,
-    height: 30,
-    borderRadius: 20,
+  menuRowLast: {
+    borderBottomWidth: 0,
+  },
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 16,
+  },
+  primaryIconBox: {
+    backgroundColor: COLORS.primarySoft,
+  },
+  secondaryIconBox: {
+    backgroundColor: COLORS.border,
+  },
+  destructiveIconBox: {
+    backgroundColor: '#FEF2F2',
   },
   menuText: {
-    fontSize: 14,
-    color: '#333',
+    fontSize: 15,
+    fontWeight: '500',
+    color: COLORS.textDark,
     flex: 1,
   },
+  destructiveText: {
+    color: COLORS.danger,
+  },
+
+  // --- LOGIN SCREEN STYLES ---
   loginContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -246,73 +337,87 @@ const styles = StyleSheet.create({
   loginContent: {
     alignItems: 'center',
     width: '100%',
+    backgroundColor: COLORS.cardBg,
+    padding: 32,
+    borderRadius: 16,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  loginIconContainer: {
-    alignItems: 'center',
+  loginIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.primarySoft,
     justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   loginTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#333',
-    marginTop: 24,
+    fontSize: 22,
+    fontWeight: '700',
+    color: COLORS.textDark,
     marginBottom: 12,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
   loginSubtitle: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 15,
+    color: COLORS.textGray,
     textAlign: 'center',
-    marginTop: 24,
     marginBottom: 32,
-    lineHeight: 24,
+    lineHeight: 22,
+    paddingHorizontal: 10,
+    fontWeight: '400',
   },
   buttonContainer: {
     width: '100%',
     gap: 12,
   },
-  loginButton: {
+  primaryButton: {
+    backgroundColor: COLORS.primary,
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 48,
-    width: '100%',
+    paddingVertical: 14,
     alignItems: 'center',
+    elevation: 2,
   },
-  signInButton: {
-    backgroundColor: '#4CAF50',
-  },
-  loginButtonSecondary: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#4CAF50',
-  },
-  loginButtonText: {
-    fontSize: 12,
+  primaryButtonText: {
+    fontSize: 16,
     fontWeight: '600',
     color: '#fff',
   },
-  loginButtonTextSecondary: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#4CAF50',
-  },
-  footer: {
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
+  secondaryButton: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  secondaryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textGray,
+  },
+
+  // --- FOOTER ---
+  footer: {
+    alignItems: 'center',
+    paddingTop: 32,
+    paddingBottom: 40,
+  },
+  footerAppName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textLight,
+    letterSpacing: 0.5,
   },
   footerAppVersion: {
     fontSize: 12,
-    color: '#66666650',
-    fontWeight: '500',
-  },
-  footerAppName: {
-    fontSize: 26,
-    color: '#66666650',
-    fontWeight: 'bold',
-    fontStyle: 'italic',
+    color: COLORS.textLight,
+    marginTop: 4,
+    fontWeight: '400',
   },
 });
