@@ -238,7 +238,7 @@ export default function CartScreen() {
       if (response.success && response.data?.order) {
         const cartStore = useCartStore.getState();
         cartStore.items = [];
-        cartStore.clearCart().catch(() => {});
+        cartStore.clearCart().catch(() => { });
         setOrderNumber(response.data.order.orderNumber);
         setShowOrderSuccess(true);
 
@@ -322,10 +322,10 @@ export default function CartScreen() {
           <TouchableOpacity
             style={[
               styles.addressCard,
-              isAddressIncomplete && styles.addressCardError,
+              isLoggedIn && isAddressIncomplete && styles.addressCardError,
             ]}
             onPress={() => {
-              if (isAddressIncomplete) {
+              if (isLoggedIn && isAddressIncomplete) {
                 const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(
                   selectedAddress.id
                 );
@@ -342,9 +342,9 @@ export default function CartScreen() {
           >
             <View style={styles.addressIconBox}>
               <Ionicons
-                name={isAddressIncomplete ? 'alert' : 'location'}
+                name={isLoggedIn && isAddressIncomplete ? 'alert' : 'location'}
                 size={20}
-                color={isAddressIncomplete ? COLORS.danger : COLORS.primary}
+                color={isLoggedIn && isAddressIncomplete ? COLORS.danger : COLORS.primary}
               />
             </View>
             <View style={styles.addressContent}>
@@ -355,7 +355,7 @@ export default function CartScreen() {
               <Text style={styles.addressText} numberOfLines={1}>
                 {selectedAddress.address}
               </Text>
-              {isAddressIncomplete && (
+              {isLoggedIn && isAddressIncomplete && (
                 <Text style={styles.addressErrorText}>
                   Tap to complete missing info
                 </Text>
@@ -444,7 +444,7 @@ export default function CartScreen() {
                     <View style={styles.qtyContainer}>
                       <AddToCartButton
                         quantity={item.quantity}
-                        onAdd={() => {}}
+                        onAdd={() => { }}
                         onIncrease={() =>
                           updateQuantity(
                             item._id,
@@ -540,7 +540,7 @@ export default function CartScreen() {
                     style={[
                       styles.applyBtn,
                       (!couponCode || isApplyingCoupon) &&
-                        styles.applyBtnDisabled,
+                      styles.applyBtnDisabled,
                     ]}
                     onPress={handleApplyCoupon}
                     disabled={!couponCode || isApplyingCoupon}
@@ -626,7 +626,7 @@ export default function CartScreen() {
                       style={[
                         styles.paymentCard,
                         selectedPaymentMethod === method.key &&
-                          styles.paymentCardSelected,
+                        styles.paymentCardSelected,
                       ]}
                       onPress={() =>
                         setSelectedPaymentMethod(method.key as any)
@@ -645,7 +645,7 @@ export default function CartScreen() {
                         style={[
                           styles.paymentLabel,
                           selectedPaymentMethod === method.key &&
-                            styles.paymentLabelSelected,
+                          styles.paymentLabelSelected,
                         ]}
                       >
                         {method.label}
@@ -712,7 +712,7 @@ export default function CartScreen() {
                 style={[
                   styles.checkoutBtn,
                   (!selectedPaymentMethod || isPlacingOrder) &&
-                    styles.btnDisabled,
+                  styles.btnDisabled,
                 ]}
                 onPress={handlePlaceOrder}
                 disabled={!selectedPaymentMethod || isPlacingOrder}

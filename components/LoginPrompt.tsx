@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { router } from 'expo-router';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import LoginModal from './LoginModal';
 
 // Modern theme constants
 const COLORS = {
@@ -24,6 +23,7 @@ interface LoginPromptProps {
     modalTitle?: string;
     modalMessage?: string;
     showArrowIcon?: boolean;
+    pathname?: string;
 }
 
 export default function LoginPrompt({
@@ -31,11 +31,9 @@ export default function LoginPrompt({
     title,
     subtitle,
     buttonText,
-    modalTitle = 'Login Required',
-    modalMessage = 'Please login to continue',
     showArrowIcon = false,
+    pathname = '/',
 }: LoginPromptProps) {
-    const [showLoginModal, setShowLoginModal] = useState(false);
 
     return (
         <View style={styles.container}>
@@ -47,7 +45,7 @@ export default function LoginPrompt({
                 <Text style={styles.subText}>{subtitle}</Text>
                 <TouchableOpacity
                     style={styles.primaryButton}
-                    onPress={() => setShowLoginModal(true)}
+                    onPress={() => router.push(`/login?redirect=${pathname}`)}
                     activeOpacity={0.7}
                 >
                     <Text style={styles.primaryButtonText}>{buttonText}</Text>
@@ -56,12 +54,7 @@ export default function LoginPrompt({
                     )}
                 </TouchableOpacity>
             </View>
-            <LoginModal
-                visible={showLoginModal}
-                onClose={() => setShowLoginModal(false)}
-                title={modalTitle}
-                message={modalMessage}
-            />
+
         </View>
     );
 }

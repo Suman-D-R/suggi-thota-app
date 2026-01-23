@@ -11,10 +11,8 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Animated,
-  Dimensions,
+  Keyboard,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -24,9 +22,24 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Drawer from '../../components/Drawer';
 import Header from '../../components/Header';
 import { useLocationStore } from '../../store/locationStore';
 import { useUserStore } from '../../store/userStore';
+
+// Modern theme constants
+const COLORS = {
+  primary: '#059669', // Emerald 600
+  primaryLight: '#D1FAE5', // Emerald 100
+  textDark: '#111827',
+  textGray: '#6B7280',
+  textLight: '#9CA3AF',
+  danger: '#EF4444',
+  bg: '#FFFFFF',
+  cardBg: '#FFFFFF',
+  border: '#F3F4F6',
+  inputBg: '#F3F4F6',
+};
 
 let MapView: any = null;
 let PROVIDER_GOOGLE: any = null;
@@ -38,8 +51,6 @@ try {
 } catch (e) {
   console.warn('Maps not available');
 }
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface LocationData {
   latitude: number;
@@ -57,6 +68,14 @@ interface LocationData {
 export default function AddAddressScreen() {
   const router = useRouter();
   const mapRef = useRef<any>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const flatHouseNoRef = useRef<TextInput>(null);
+  const streetRef = useRef<TextInput>(null);
+  const cityRef = useRef<TextInput>(null);
+  const fullNameRef = useRef<TextInput>(null);
+  const mobileNumberRef = useRef<TextInput>(null);
+  const inputRefs = useRef<{ [key: string]: TextInput | null }>({});
+  const inputPositions = useRef<{ [key: string]: number }>({});
   const insets = useSafeAreaInsets();
   const geocodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isUserInteractingRef = useRef(false);
@@ -69,14 +88,15 @@ export default function AddAddressScreen() {
   const { addAddress, updateAddress, createAddress, addresses, removeAddress } =
     useLocationStore();
   const isLoggedIn = useUserStore((state) => state.isLoggedIn);
+  const userProfile = useUserStore((state) => state.profile);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(
     null
   );
   const [isLoading, setIsLoading] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  const [showDrawer, setShowDrawer] = useState(false);
+  const [focusedInput, setFocusedInput] = useState<string | null>(null);
 
   const [flatHouseNo, setFlatHouseNo] = useState('');
   const [street, setStreet] = useState('');
@@ -247,24 +267,62 @@ export default function AddAddressScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    // Scroll to focused input when keyboard appears
+    if (focusedInput) {
+      const keyboardDidShowListener = Keyboard.addListener(
+        Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+        () => {
+          scrollToInput(focusedInput);
+        }
+      );
+
+      return () => {
+        keyboardDidShowListener.remove();
+      };
+    }
+  }, [focusedInput]);
+
   const openDrawer = () => {
-    setShowModal(true);
-    slideAnim.setValue(0);
-    Animated.timing(slideAnim, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
+    // Auto-populate phone number from user profile if logged in
+    if (isLoggedIn && userProfile) {
+      const phone = userProfile.phone || userProfile.mobileNumber || '';
+      // Extract last 10 digits if phone is in international format (e.g., +919876543210)
+      if (phone) {
+        const cleanedPhone = phone.replace(/\D/g, ''); // Remove all non-digits
+        const last10Digits = cleanedPhone.slice(-10); // Get last 10 digits
+        if (last10Digits.length === 10) {
+          setMobileNumber(last10Digits);
+        }
+      }
+    }
+    setShowDrawer(true);
   };
 
   const closeDrawer = () => {
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowModal(false);
-    });
+    setShowDrawer(false);
+    setFocusedInput(null);
+    Keyboard.dismiss();
+  };
+
+  const scrollToInput = (inputName: string) => {
+    // Small delay to ensure keyboard is shown and layout is complete
+    setTimeout(() => {
+      const inputY = inputPositions.current[inputName];
+      if (inputY !== undefined && scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({
+          y: Math.max(0, inputY - 100), // Scroll with padding above
+          animated: true,
+        });
+      } else {
+        // Fallback: scroll to end for lower inputs
+        if (['fullName', 'mobileNumber'].includes(inputName)) {
+          setTimeout(() => {
+            scrollViewRef.current?.scrollToEnd({ animated: true });
+          }, 100);
+        }
+      }
+    }, Platform.OS === 'ios' ? 300 : 100);
   };
 
   const saveAddress = async () => {
@@ -445,16 +503,6 @@ export default function AddAddressScreen() {
     }
   };
 
-  const translateY = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [SCREEN_HEIGHT, 0],
-  });
-
-  const backdropOpacity = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 0.5],
-  });
-
   return (
     <View style={styles.container}>
       <Header title='Add new address' showBack />
@@ -480,7 +528,7 @@ export default function AddAddressScreen() {
 
         {/* Search Bar - Absolutely positioned on top of map */}
         <View style={styles.searchBox}>
-          <IconSearch size={20} color='#16a34a' />
+          <IconSearch size={20} color={COLORS.primary} />
           <TextInput
             style={styles.searchInput}
             placeholder='Search area, street...'
@@ -553,7 +601,7 @@ export default function AddAddressScreen() {
           style={styles.currentBtn}
           onPress={getCurrentLocation}
         >
-          <IconCurrentLocation size={18} color='#4CAF50' />
+          <IconCurrentLocation size={18} color={COLORS.primary} />
           <Text style={styles.currentText}>Use current location</Text>
         </TouchableOpacity>
 
@@ -614,145 +662,216 @@ export default function AddAddressScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Drawer Modal */}
-      <Modal
-        visible={showModal}
-        transparent={true}
-        animationType='none'
-        onRequestClose={closeDrawer}
+      {/* Drawer for Address Details */}
+      <Drawer
+        visible={showDrawer}
+        onClose={closeDrawer}
+        title='Add Address Details'
+        maxHeight='85%'
       >
-        <View style={styles.modalContainer}>
-          <Animated.View
-            style={[styles.backdrop, { opacity: backdropOpacity }]}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          style={styles.drawerContent}
+        >
+          <ScrollView
+            ref={scrollViewRef}
+            contentContainerStyle={{
+              paddingBottom: Math.max(insets.bottom, 200),
+              paddingHorizontal: 24,
+            }}
+            keyboardShouldPersistTaps='handled'
+            keyboardDismissMode='interactive'
+            showsVerticalScrollIndicator={true}
+            nestedScrollEnabled={true}
           >
-            <TouchableOpacity
-              style={styles.backdropTouch}
-              activeOpacity={1}
-              onPress={closeDrawer}
-            />
-          </Animated.View>
-
-          <Animated.View
-            style={[
-              styles.drawer,
-              {
-                transform: [{ translateY }],
-              },
-            ]}
-          >
-            <View style={styles.closeButtonContainer}>
-              <TouchableOpacity
-                onPress={closeDrawer}
-                style={styles.closeButton}
-              >
-                <IconX size={24} color='#FFFFFF' />
-              </TouchableOpacity>
-            </View>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
-              style={styles.drawerContent}
+            <Text style={styles.label}>Flat / House *</Text>
+            <View
+              onLayout={(event) => {
+                inputPositions.current['flatHouseNo'] = event.nativeEvent.layout.y;
+              }}
+              style={[
+                styles.inputContainer,
+                focusedInput === 'flatHouseNo' && styles.inputFocused,
+              ]}
             >
-              <ScrollView
-                contentContainerStyle={{
-                  paddingBottom: Math.max(insets.bottom, 24),
+              <TextInput
+                ref={(ref) => {
+                  flatHouseNoRef.current = ref;
+                  inputRefs.current['flatHouseNo'] = ref;
                 }}
-                keyboardShouldPersistTaps='handled'
-                keyboardDismissMode='interactive'
-                showsVerticalScrollIndicator={true}
-              >
-                <Text style={[styles.label, { marginTop: 0 }]}>
-                  Flat / House *
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  value={flatHouseNo}
-                  onChangeText={setFlatHouseNo}
-                  placeholder='Enter flat/house number'
-                  placeholderTextColor='#999'
-                  returnKeyType='next'
-                />
+                style={styles.textInput}
+                value={flatHouseNo}
+                onChangeText={setFlatHouseNo}
+                placeholder='Enter flat/house number'
+                placeholderTextColor={COLORS.textLight}
+                returnKeyType='next'
+                onSubmitEditing={() => streetRef.current?.focus()}
+                onFocus={() => {
+                  setFocusedInput('flatHouseNo');
+                  scrollToInput('flatHouseNo');
+                }}
+                onBlur={() => setFocusedInput(null)}
+              />
+            </View>
 
-                <Text style={styles.label}>Street *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={street}
-                  onChangeText={setStreet}
-                  placeholder='Enter street address'
-                  placeholderTextColor='#999'
-                  returnKeyType='next'
-                />
+            <Text style={styles.label}>Street *</Text>
+            <View
+              onLayout={(event) => {
+                inputPositions.current['street'] = event.nativeEvent.layout.y;
+              }}
+              style={[
+                styles.inputContainer,
+                focusedInput === 'street' && styles.inputFocused,
+              ]}
+            >
+              <TextInput
+                ref={(ref) => {
+                  streetRef.current = ref;
+                  inputRefs.current['street'] = ref;
+                }}
+                style={styles.textInput}
+                value={street}
+                onChangeText={setStreet}
+                placeholder='Enter street address'
+                placeholderTextColor={COLORS.textLight}
+                returnKeyType='next'
+                onSubmitEditing={() => cityRef.current?.focus()}
+                onFocus={() => {
+                  setFocusedInput('street');
+                  scrollToInput('street');
+                }}
+                onBlur={() => setFocusedInput(null)}
+              />
+            </View>
 
-                <Text style={styles.label}>City *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={city}
-                  onChangeText={setCity}
-                  placeholder='Enter city'
-                  placeholderTextColor='#999'
-                  returnKeyType='next'
-                />
+            <Text style={styles.label}>City *</Text>
+            <View
+              onLayout={(event) => {
+                inputPositions.current['city'] = event.nativeEvent.layout.y;
+              }}
+              style={[
+                styles.inputContainer,
+                focusedInput === 'city' && styles.inputFocused,
+              ]}
+            >
+              <TextInput
+                ref={(ref) => {
+                  cityRef.current = ref;
+                  inputRefs.current['city'] = ref;
+                }}
+                style={styles.textInput}
+                value={city}
+                onChangeText={setCity}
+                placeholder='Enter city'
+                placeholderTextColor={COLORS.textLight}
+                returnKeyType='next'
+                onSubmitEditing={() => fullNameRef.current?.focus()}
+                onFocus={() => {
+                  setFocusedInput('city');
+                  scrollToInput('city');
+                }}
+                onBlur={() => setFocusedInput(null)}
+              />
+            </View>
 
-                <Text style={styles.label}>Full Name *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={fullName}
-                  onChangeText={setFullName}
-                  placeholder='Enter your full name'
-                  placeholderTextColor='#999'
-                  returnKeyType='next'
-                />
+            <Text style={styles.label}>Full Name *</Text>
+            <View
+              onLayout={(event) => {
+                inputPositions.current['fullName'] = event.nativeEvent.layout.y;
+              }}
+              style={[
+                styles.inputContainer,
+                focusedInput === 'fullName' && styles.inputFocused,
+              ]}
+            >
+              <TextInput
+                ref={(ref) => {
+                  fullNameRef.current = ref;
+                  inputRefs.current['fullName'] = ref;
+                }}
+                style={styles.textInput}
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder='Enter your full name'
+                placeholderTextColor={COLORS.textLight}
+                returnKeyType='next'
+                onSubmitEditing={() => mobileNumberRef.current?.focus()}
+                onFocus={() => {
+                  setFocusedInput('fullName');
+                  scrollToInput('fullName');
+                }}
+                onBlur={() => setFocusedInput(null)}
+              />
+            </View>
 
-                <Text style={styles.label}>Mobile *</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType='number-pad'
-                  maxLength={10}
-                  value={mobileNumber}
-                  onChangeText={(t) =>
-                    setMobileNumber(t.replace(/[^0-9]/g, ''))
-                  }
-                  placeholder='Enter 10-digit mobile number'
-                  placeholderTextColor='#999'
-                  returnKeyType='done'
-                />
+            <Text style={styles.label}>Mobile *</Text>
+            <View
+              onLayout={(event) => {
+                inputPositions.current['mobileNumber'] = event.nativeEvent.layout.y;
+              }}
+              style={[
+                styles.inputContainer,
+                focusedInput === 'mobileNumber' && styles.inputFocused,
+              ]}
+            >
+              <TextInput
+                ref={(ref) => {
+                  mobileNumberRef.current = ref;
+                  inputRefs.current['mobileNumber'] = ref;
+                }}
+                style={styles.textInput}
+                keyboardType='number-pad'
+                maxLength={10}
+                value={mobileNumber}
+                onChangeText={(t) =>
+                  setMobileNumber(t.replace(/[^0-9]/g, ''))
+                }
+                placeholder='Enter 10-digit mobile number'
+                placeholderTextColor={COLORS.textLight}
+                returnKeyType='done'
+                onFocus={() => {
+                  setFocusedInput('mobileNumber');
+                  scrollToInput('mobileNumber');
+                }}
+                onBlur={() => setFocusedInput(null)}
+              />
+            </View>
 
-                <View style={styles.typeRow}>
-                  {['Home', 'Work'].map((t) => (
-                    <TouchableOpacity
-                      key={t}
-                      style={[
-                        styles.typeBtn,
-                        addressType === t && styles.typeActive,
-                      ]}
-                      onPress={() => setAddressType(t as any)}
-                    >
-                      <Text
-                        style={[
-                          styles.typeBtnText,
-                          addressType === t && styles.typeBtnTextActive,
-                        ]}
-                      >
-                        {t}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <TouchableOpacity style={styles.saveBtn} onPress={saveAddress}>
-                  <Text style={styles.saveText}>Save address</Text>
+            <View style={styles.typeRow}>
+              {['Home', 'Work'].map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[
+                    styles.typeBtn,
+                    addressType === t && styles.typeActive,
+                  ]}
+                  onPress={() => setAddressType(t as any)}
+                >
+                  <Text
+                    style={[
+                      styles.typeBtnText,
+                      addressType === t && styles.typeBtnTextActive,
+                    ]}
+                  >
+                    {t}
+                  </Text>
                 </TouchableOpacity>
-              </ScrollView>
-            </KeyboardAvoidingView>
-          </Animated.View>
-        </View>
-      </Modal>
+              ))}
+            </View>
+
+            <TouchableOpacity style={styles.saveBtn} onPress={saveAddress}>
+              <Text style={styles.saveText}>Save address</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Drawer>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: COLORS.bg },
 
   searchBox: {
     position: 'absolute',
@@ -761,7 +880,7 @@ const styles = StyleSheet.create({
     right: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.bg,
     paddingHorizontal: 16,
     height: Platform.select({
       ios: 48,
@@ -774,15 +893,15 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 2, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
-    elevation: 1,
-    borderWidth: 0.5,
-    borderColor: '#E0E0E0',
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   searchInput: {
     flex: 1,
     marginLeft: 12,
     fontSize: 15,
-    color: '#1a1a1a',
+    color: COLORS.textDark,
   },
   mapContainer: { flex: 1 },
   map: { flex: 1 },
@@ -790,6 +909,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.bg,
   },
   centerPin: {
     position: 'absolute',
@@ -804,10 +924,10 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#FF3B30',
+    backgroundColor: '#EF4444',
     borderWidth: 3,
-    borderColor: '#FF3B30',
-    shadowColor: '#FF3B30',
+    borderColor: '#EF4444',
+    shadowColor: '#EF4444',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 8,
@@ -837,38 +957,50 @@ const styles = StyleSheet.create({
     bottom: 20,
     right: 16,
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    padding: 10,
-    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: COLORS.bg,
+    padding: 12,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     elevation: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  currentText: { marginLeft: 6, color: '#4CAF50' },
+  currentText: {
+    marginLeft: 6,
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
 
   loader: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(255,255,255,0.8)',
   },
 
   bottom: {
     padding: 16,
     paddingBottom: 16,
     borderTopWidth: 1,
-    borderColor: '#eee',
-    backgroundColor: '#F8F9FA',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
   },
   addressCard: {
     flexDirection: 'row',
     marginBottom: 12,
-    padding: 12,
-    backgroundColor: '#fff',
-    borderRadius: 14,
+    padding: 14,
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
-    borderWidth: 0.2,
-    borderColor: '#E0E0E0',
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   addressIcon: {
     marginRight: 12,
@@ -878,14 +1010,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   addressMainText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: COLORS.textDark,
     marginBottom: 4,
   },
   addressText: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: 13,
+    color: COLORS.textGray,
     marginBottom: 6,
     lineHeight: 20,
   },
@@ -895,80 +1027,58 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   addressMetaText: {
-    fontSize: 10,
-    color: '#999',
+    fontSize: 11,
+    color: COLORS.textLight,
   },
   addBtn: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: COLORS.primary,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
-  },
-  addText: { color: '#fff', fontWeight: '600' },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#000',
-  },
-  backdropTouch: {
-    flex: 1,
-  },
-  drawer: {
-    backgroundColor: '#FBFBFB',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '85%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
     shadowRadius: 4,
-    paddingTop: 20,
-    position: 'relative',
-    flex: 1,
+    elevation: 3,
   },
-  closeButtonContainer: {
-    position: 'absolute',
-    top: -46,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  closeButton: {
-    padding: 8,
-    backgroundColor: '#1A1A1A',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#5B5B5B',
-    justifyContent: 'center',
-    alignItems: 'center',
+  addText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
   },
   drawerContent: {
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    flex: 1,
+    // Let content size naturally
   },
-
   label: {
     marginTop: 16,
     marginBottom: 8,
     fontWeight: '600',
     fontSize: 14,
-    color: '#1a1a1a',
+    color: COLORS.textDark,
+    marginLeft: 4,
   },
-  input: {
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 16,
+    height: 50,
+    marginBottom: 4,
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    borderColor: '#E0E0E0',
-    backgroundColor: '#fff',
-    fontSize: 16,
-    color: '#1a1a1a',
+    borderColor: 'transparent',
   },
-
+  inputFocused: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.bg,
+  },
+  textInput: {
+    flex: 1,
+    height: '100%',
+    fontSize: 16,
+    fontWeight: '500',
+    color: COLORS.textDark,
+    paddingHorizontal: 16,
+  },
   typeRow: {
     flexDirection: 'row',
     gap: 12,
@@ -980,34 +1090,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderColor: '#E0E0E0',
+    backgroundColor: COLORS.bg,
+    borderColor: COLORS.border,
   },
   typeActive: {
-    backgroundColor: '#E8F5E9',
-    borderColor: '#4CAF50',
+    backgroundColor: COLORS.primaryLight,
+    borderColor: COLORS.primary,
   },
   typeBtnText: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#666',
+    color: COLORS.textGray,
   },
   typeBtnTextActive: {
-    color: '#4CAF50',
+    color: COLORS.primary,
     fontWeight: '600',
   },
-
   saveBtn: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: COLORS.primary,
     marginTop: 24,
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 12,
     alignItems: 'center',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   saveText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

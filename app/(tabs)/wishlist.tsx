@@ -83,8 +83,7 @@ export default function WishlistTab() {
         title='Login to Access Wishlist'
         subtitle='Sign in to save your favorite items and access them from any device.'
         buttonText='Sign In / Sign Up'
-        modalTitle='Unlock Your Wishlist'
-        modalMessage='Login to save items for later!'
+        pathname='/wishlist'
         showArrowIcon={true}
       />
     );

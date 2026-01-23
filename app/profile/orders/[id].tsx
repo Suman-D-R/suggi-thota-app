@@ -31,12 +31,12 @@ const COLORS = {
 // --- Interfaces (Kept same as original) ---
 interface OrderItem {
   product:
-    | string
-    | {
-        _id: string;
-        name: string;
-        images?: string[];
-      };
+  | string
+  | {
+    _id: string;
+    name: string;
+    images?: string[];
+  };
   quantity: number;
   price: number;
   total: number;
@@ -135,7 +135,9 @@ const StatusTimeline = ({ status }: { status: string }) => {
                 <View
                   style={[
                     styles.timelineDot,
-                    isActive ? styles.timelineDotActive : {},
+                    isActive ? { ...styles.timelineDotActive, borderColor: COLORS.bg } : {
+                      borderColor: "#F3F4F6",
+                    },
                   ]}
                 >
                   {isActive && (
@@ -458,13 +460,26 @@ export default function OrderDetailsScreen() {
       </ScrollView>
 
       {/* Floating Action Icons */}
-      {order.status === 'delivered' && (
-        <View style={styles.floatingActions}>
+      <View style={styles.floatingActions}>
+        {order.status === 'delivered' && (
           <TouchableOpacity style={styles.floatingButton}>
             <Ionicons name='refresh' size={20} color={COLORS.primary} />
           </TouchableOpacity>
-        </View>
-      )}
+        )}
+        <TouchableOpacity
+          style={styles.floatingButtonSupport}
+          onPress={() =>
+            router.push({
+              pathname: '/profile/support-chat',
+              params: {
+                orderNumber: order.orderNumber || order._id.slice(-6),
+              },
+            })
+          }
+        >
+          <Ionicons name='chatbubble-ellipses' size={22} color={COLORS.bg} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -473,7 +488,7 @@ const styles = StyleSheet.create({
   // --- CONTAINER ---
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: '#F8FAFC',
   },
   errorContainer: {
     flex: 1,
@@ -510,25 +525,25 @@ const styles = StyleSheet.create({
 
   // --- SECTION HEADERS ---
   section: {
-    marginTop: 16,
+    marginTop: 12,
     paddingHorizontal: 0,
   },
   sectionHeaderLabel: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: COLORS.textGray,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginTop: 24,
-    marginBottom: 8,
+    marginTop: 16,
+    marginBottom: 6,
     marginLeft: 4,
   },
 
   // --- CARDS ---
   sectionCard: {
     backgroundColor: COLORS.cardBg,
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
@@ -536,15 +551,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 14,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: COLORS.textDark,
   },
   dateText: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textGray,
     fontWeight: '500',
   },
@@ -579,7 +594,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: COLORS.bg,
     zIndex: 2,
   },
   timelineDotActive: {
@@ -592,7 +606,7 @@ const styles = StyleSheet.create({
     left: '50%',
     marginLeft: -1,
     width: 2,
-    height: 16,
+    height: 20,
     backgroundColor: COLORS.border,
     zIndex: 1,
   },
@@ -600,13 +614,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   timelineLabel: {
-    fontSize: 13,
+    fontSize: 12,
     color: COLORS.textLight,
     fontWeight: '600',
     textTransform: 'capitalize',
     textAlign: 'left',
     flex: 1,
-    lineHeight: 20,
+    lineHeight: 18,
     paddingTop: 2,
   },
   timelineLabelActive: {
@@ -626,36 +640,36 @@ const styles = StyleSheet.create({
   cancelledText: {
     color: COLORS.danger,
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: 13,
   },
   refundedBanner: {
     backgroundColor: COLORS.primarySoft,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
-    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+    gap: 6,
     borderWidth: 1,
     borderColor: '#A7F3D0',
   },
   refundedText: {
     color: COLORS.primary,
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: 13,
   },
   etaContainer: {
-    marginTop: 16,
+    marginTop: 12,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.primarySoft,
-    padding: 10,
-    borderRadius: 12,
+    padding: 8,
+    borderRadius: 10,
     alignSelf: 'flex-start',
-    gap: 6,
+    gap: 5,
   },
   etaText: {
     color: COLORS.primary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
 
@@ -671,7 +685,7 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    padding: 10,
   },
   itemBorder: {
     borderBottomWidth: 1,
@@ -720,18 +734,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   itemName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     color: COLORS.textDark,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   itemVariant: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textGray,
     fontWeight: '500',
   },
   itemPrice: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: COLORS.textDark,
   },
@@ -744,47 +758,47 @@ const styles = StyleSheet.create({
   gridCard: {
     flex: 1,
     backgroundColor: COLORS.cardBg,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    padding: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   iconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: COLORS.primarySoft,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   gridLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textGray,
-    marginBottom: 4,
+    marginBottom: 3,
     fontWeight: '500',
   },
   gridValue: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: COLORS.textDark,
-    lineHeight: 18,
+    lineHeight: 16,
   },
 
   // --- RECEIPT ---
   receiptContainer: {
     backgroundColor: COLORS.cardBg,
-    borderRadius: 20,
-    padding: 20,
-    marginTop: 24,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   receiptTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: COLORS.textDark,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   dashedLineContainer: {
     flexDirection: 'row',
@@ -801,15 +815,15 @@ const styles = StyleSheet.create({
   billRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   billLabel: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.textGray,
     fontWeight: '500',
   },
   billValue: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.textDark,
     fontWeight: '600',
   },
@@ -821,17 +835,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 4,
-    paddingTop: 12,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
   totalLabel: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: COLORS.textDark,
   },
   totalValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: COLORS.primary,
   },
@@ -839,10 +853,11 @@ const styles = StyleSheet.create({
   // --- FLOATING ACTIONS ---
   floatingActions: {
     position: 'absolute',
-    bottom: 16,
+    bottom: 100,
     right: 16,
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 12,
+    alignItems: 'flex-end',
   },
   floatingButton: {
     width: 56,
@@ -853,5 +868,24 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
+  floatingButtonSupport: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+
 });

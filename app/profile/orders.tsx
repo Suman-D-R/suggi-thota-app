@@ -137,9 +137,8 @@ export default function OrdersScreen() {
 
     // Format: "Product Name, 5 items" or "Product Name, 5 items & 2 more"
     if (totalItems === 1) {
-      return `${productName}, ${totalQuantity} ${
-        totalQuantity === 1 ? 'item' : 'items'
-      }`;
+      return `${productName}, ${totalQuantity} ${totalQuantity === 1 ? 'item' : 'items'
+        }`;
     }
     return `${productName}, ${totalQuantity} items & ${totalItems - 1} more`;
   };
@@ -247,7 +246,7 @@ export default function OrdersScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: '#F8FAFC',
   },
   center: {
     flex: 1,

@@ -41,6 +41,15 @@ export default function Drawer({
 }: DrawerProps) {
   const slideAnim = useRef(new Animated.Value(0)).current;
 
+  // Calculate actual height from percentage string
+  const getMaxHeightValue = () => {
+    if (typeof maxHeight === 'string' && maxHeight.endsWith('%')) {
+      const percentage = parseFloat(maxHeight) / 100;
+      return SCREEN_HEIGHT * percentage;
+    }
+    return maxHeight;
+  };
+
   useEffect(() => {
     if (visible) {
       slideAnim.setValue(0);
@@ -72,6 +81,8 @@ export default function Drawer({
     outputRange: [0, 0.5],
   });
 
+  const calculatedMaxHeight = getMaxHeightValue();
+
   return (
     <Modal
       visible={visible}
@@ -88,32 +99,38 @@ export default function Drawer({
 
         <Animated.View
           style={[
-            styles.modalContent,
-            { transform: [{ translateY }], maxHeight },
+            { transform: [{ translateY }] },
           ]}
         >
-          {/* Modal Header */}
-          {(title || subtitle || headerComponent) && (
-            <View style={styles.modalHeader}>
-              {headerComponent || (
-                <View>
-                  {title && <Text style={styles.modalTitle}>{title}</Text>}
-                  {subtitle && (
-                    <Text style={styles.modalSubtitle}>{subtitle}</Text>
-                  )}
-                </View>
-              )}
-              <TouchableOpacity
-                onPress={handleClose}
-                style={styles.modalCloseBtn}
-              >
-                <IconX size={20} color={COLORS.textDark} />
-              </TouchableOpacity>
-            </View>
-          )}
+          <View
+            style={[
+              styles.modalContent,
+              { maxHeight: calculatedMaxHeight },
+            ]}
+          >
+            {/* Modal Header */}
+            {(title || subtitle || headerComponent) && (
+              <View style={styles.modalHeader}>
+                {headerComponent || (
+                  <View>
+                    {title && <Text style={styles.modalTitle}>{title}</Text>}
+                    {subtitle && (
+                      <Text style={styles.modalSubtitle}>{subtitle}</Text>
+                    )}
+                  </View>
+                )}
+                <TouchableOpacity
+                  onPress={handleClose}
+                  style={styles.modalCloseBtn}
+                >
+                  <IconX size={20} color={COLORS.textDark} />
+                </TouchableOpacity>
+              </View>
+            )}
 
-          {/* Content */}
-          <View style={styles.contentWrapper}>{children}</View>
+            {/* Content */}
+            <View style={styles.contentWrapper}>{children}</View>
+          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -136,6 +153,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    flexDirection: 'column',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -146,7 +164,7 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   contentWrapper: {
-    // flex: 1,
+    // Content sizes naturally, constrained by parent maxHeight
   },
   modalTitle: {
     fontSize: 18,

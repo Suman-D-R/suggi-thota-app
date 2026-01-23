@@ -169,8 +169,7 @@ export default function ReorderTab() {
         title='Login to Reorder'
         subtitle='View your history and reorder your favorites in one tap.'
         buttonText='Sign In / Sign Up'
-        modalTitle='Login Required'
-        modalMessage='Please login to access history'
+        pathname='/reorder'
         showArrowIcon={true}
       />
     );
